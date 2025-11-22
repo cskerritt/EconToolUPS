@@ -1,0 +1,3208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>But-For Damages Analyzer</title>
+  <style>
+    :root { --bg:#0b0f14; --panel:#121820; --panel-2:#0f141b; --text:#e8f0f9; --muted:#97a6b6; --accent:#7cc1ff; --danger:#ff7b7b; --ok:#79e0a8; --warn:#ffd26a; --border:#202a36; }
+    html,body{height:100%}
+    body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji"}
+    .app{display:grid;grid-template-columns:380px 1fr;height:100vh}
+    aside{background:var(--panel);border-right:1px solid var(--border);overflow:auto}
+    main{display:grid;grid-template-rows:auto auto 1fr}
+    header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border);background:var(--panel)}
+    h1{margin:0;font-size:18px;letter-spacing:.2px}
+    .small{color:var(--muted);font-size:12px}
+    .section{padding:14px 16px;border-bottom:1px solid var(--border)}
+    .section h2{font-size:13px;margin:0 0 10px;color:var(--accent);letter-spacing:.3px;text-transform:uppercase;cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between}
+    .section h2:hover{color:var(--text)}
+    .section-toggle{transition:transform 0.2s ease;font-size:10px;opacity:0.7}
+    .section-toggle.collapsed{transform:rotate(-90deg)}
+    .section-content{transition:max-height 0.3s ease,opacity 0.3s ease;overflow:hidden}
+    .section-content.collapsed{max-height:0!important;opacity:0;padding:0;margin:0}
+    .grid{display:grid;gap:8px;grid-template-columns:1fr 1fr}
+    .grid-1{grid-template-columns:1fr}
+    label{display:grid;gap:6px}
+    label span{color:var(--muted);font-size:12px}
+    input,select,textarea{background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:10px;outline:none;width:100%}
+    input[type=number]{text-align:right}
+    input:disabled,select:disabled,textarea:disabled{opacity:0.5;cursor:not-allowed;background:var(--bg);color:var(--muted);border-color:var(--border)}
+    .row{display:flex;gap:8px;align-items:center}
+    .btn{background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:10px 12px;cursor:pointer}
+    .btn.primary{background:linear-gradient(135deg,var(--accent),#62a8ff);color:#07111b;border:none;font-weight:600}
+    .btn.ghost{background:transparent}
+    .btn:disabled{opacity:.65;cursor:not-allowed}
+    .help{color:var(--muted);font-size:12px;margin-top:6px}
+    .toolbar{display:flex;gap:8px;padding:10px 20px;border-bottom:1px solid var(--border);background:var(--panel)}
+    .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:12px 20px;border-bottom:1px solid var(--border);background:linear-gradient(180deg,#0f141b,#0b0f14)}
+    .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:12px}
+    .card h3{margin:0;font-size:12px;color:var(--muted);font-weight:500}
+    .big{font-size:20px;font-weight:700;margin-top:6px}
+    .content{overflow:auto;padding-bottom:24px}
+    table{border-collapse:collapse;width:100%;font-size:13px}
+    th,td{border-bottom:1px solid var(--border);padding:8px 10px;text-align:right}
+    th{position:sticky;top:0;background:var(--panel);z-index:1}
+    td:first-child,th:first-child{text-align:left}
+    .col-loss,.col-past,.col-future{background:rgba(255,123,123,0.06);font-weight:600}
+    .col-future{background:rgba(124,193,255,0.08)}
+    .col-past{background:rgba(255,210,106,0.10)}
+    .pill{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:999px;border:1px solid var(--border);background:var(--panel-2);color:var(--muted);font-size:12px}
+    .footer{padding:10px 16px;color:var(--muted);font-size:12px;border-top:1px solid var(--border);background:var(--panel);display:flex;justify-content:space-between;align-items:center}
+    .tabs{display:flex;gap:8px;padding:0 20px 10px}
+    .tabbtn{padding:8px 10px;border:1px solid var(--border);background:var(--panel-2);border-radius:999px;cursor:pointer}
+    .tabbtn.active{background:var(--accent);color:#06101a;border:none;font-weight:600}
+    pre.json{background:#0b1117;padding:14px;border-radius:12px;border:1px solid var(--border);overflow:auto}
+    .editable-cell{cursor:pointer;position:relative;transition:background .15s}
+    .editable-cell:hover{background:var(--panel-2);outline:1px solid var(--accent)}
+    .editable-cell.manual-override{background:var(--warn);color:var(--bg);font-weight:600}
+    .editable-cell input{width:100%;background:var(--panel-2);color:var(--text);border:2px solid var(--accent);padding:4px 6px;font:inherit;text-align:right}
+    .edit-indicator{position:absolute;top:2px;right:2px;width:6px;height:6px;background:var(--accent);border-radius:50%}
+  </style>
+</head>
+<body>
+<div class="app" id="app">
+  <aside>
+    <div class="section">
+      <h2><span>Evaluee Manager</span><span class="section-toggle">▼</span></h2>
+      <div class="section-content">
+        <div class="grid">
+          <label><span>Profile Name (evaluee)</span><input id="profileName" placeholder="e.g., Ramirez, Carmen"/></label>
+          <label><span>Saved Profiles</span>
+            <select id="profileSelect"></select>
+          </label>
+        </div>
+        <div class="row" style="margin-top:6px">
+          <button class="btn" id="profileSave">Save Local</button>
+          <button class="btn primary" id="profileSaveDB">Save to Database</button>
+          <button class="btn" id="profileLoad">Load</button>
+        </div>
+        <div class="row" style="margin-top:6px">
+          <button class="btn" id="profileSyncLocalToDb">Push Local → Database</button>
+        </div>
+        <div class="row" style="margin-top:6px">
+          <button class="btn" id="profileDuplicate">Duplicate</button>
+          <button class="btn" id="profileDelete">Delete</button>
+          <button class="btn" id="profileExport">Export All</button>
+          <button class="btn" id="profileImport">Import</button>
+        </div>
+        <div class="help"><strong>Save Local</strong>: Browser only (localStorage). <strong>Save to Database</strong>: Server database (accessible across devices). Autosave runs when you change Case Name or fields.</div>
+        <div class="grid" style="margin-top:8px">
+          <label><span>Autosave interval (minutes)</span><input id="autosaveMinutes" type="number" step="1" min="1" placeholder="3"/></label>
+        </div>
+      </div>
+    </div>
+    <div class="section">
+      <h2><span>Case Setup</span><span class="section-toggle">▼</span></h2>
+      <div class="section-content">
+        <div class="grid">
+          <label><span>Case Name</span><input id="caseName" placeholder="e.g., Ramirez v. XYZ"/></label>
+          <label><span>Case Type</span>
+            <select id="caseType">
+              <option value="pi" selected>Personal Injury</option>
+              <option value="mm">Medical Malpractice</option>
+              <option value="wd">Wrongful Death</option>
+            </select>
+          </label>
+          <label><span>Date of Birth</span><input id="dob" type="date"/></label>
+          <label><span>Incident Date</span><input id="incidentDate" type="date"/></label>
+          <label><span>Report Date</span><input id="valuationDate" type="date"/></label>
+        </div>
+        <div class="grid">
+          <label><span>Work-Life Expectancy (years)</span><input id="wleYears" type="number" step="0.01" placeholder="24.50"/></label>
+          <label><span>Years to Final Separation (years)</span><input id="yfsYears" type="number" step="0.01" placeholder="29.50"/></label>
+          <label><span>Life Expectancy (years)</span><input id="leYears" type="number" step="0.01" placeholder="41.20"/></label>
+          <label><span>Retirement Date (auto)</span><input id="retireDate" type="text" disabled/></label>
+        </div>
+        <div class="grid">
+          <label><span>PJI Years (from injury)</span><input id="pjiYears" type="number" step="0.01" placeholder="e.g., 15.5"/></label>
+          <label><span>PJI Retirement Date (auto)</span><input id="pjiRetireDate" type="text" disabled/></label>
+        </div>
+        <div class="help">Pre-injury table: Incident to Report. Post-injury table: Report to Retirement. Dates auto-computed. PJI Years: Enter years from incident date to create an alternate retirement scenario (e.g., 15.5 years from injury). Case Type controls WD fields below.</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2><span>Life Tables & Documentation</span><span class="section-toggle">▼</span></h2>
+      <div class="section-content">
+        <div class="grid">
+          <label class="row"><input id="applySurvival" type="checkbox" checked/> <span>Apply CDC life-table survival probabilities to future losses</span></label>
+          <label><span>Life Table Population</span>
+            <select id="lifeTablePopulation">
+              <option value="combined">Combined (US, CDC 2023)</option>
+              <option value="female">Female</option>
+              <option value="male">Male</option>
+            </select>
+          </label>
+          <label><span>Life Table Source Citation</span><input id="lifeTableSource" placeholder="CDC United States Life Tables, 2023 (NVSR 73-15)"/></label>
+        </div>
+        <div class="grid grid-1">
+          <label><span>Wage / Growth Source Notes</span>
+            <textarea id="wageSourceNotes" rows="2" placeholder="e.g., BLS OEWS May 2024, Providence-Warwick, SOC 53-3032. Growth tied to ECI Wages."></textarea>
+          </label>
+          <label><span>Fringe / Benefit Source Notes</span>
+            <textarea id="benefitSourceNotes" rows="2" placeholder="e.g., UPS NMA 2023-2028, KFF Employer Health Benefits Survey 2025, BLS ECEC."></textarea>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2><span>But-For Stream</span><span class="section-toggle">▼</span></h2>
+      <div class="section-content">
+        <div class="grid">
+          <label><span>Base Earnings (annual)</span><input id="bfBase" type="number" step="0.01" placeholder="65000"/></label>
+          <label><span>Fringe Benefit Method</span>
+            <select id="fringeMethod">
+              <option value="simple">Simple % of Pay</option>
+              <option value="ups">UPS-Specific (H&W + Pension)</option>
+            </select>
+          </label>
+          <label class="simple-fringe"><span>Fringe % of Pay</span><input id="bfFringePct" type="number" step="0.01" placeholder="20"/></label>
+          <label><span>Growth Method</span>
+            <select id="bfGrowthMethod">
+              <option value="fixed">Fixed CAGR</option>
+              <option value="series">Custom per-year %</option>
+              <option value="ups">UPS Contract Rates (2023-2028)</option>
+            </select>
+          </label>
+          <label class="series-only" style="display:none"><span>Custom Growth Series (% comma-sep)</span>
+            <input id="bfGrowthSeries" placeholder="3,3,3,2.8,2.8,3.2"/>
+          </label>
+          <label class="fixed-only"><span>Annual Growth %</span><input id="bfGrowth" type="number" step="0.01" placeholder="3"/></label>
+        </div>
+      </div>
+    </div>
+
+    <div class="section ups-fringe" style="display:none">
+      <h2><span>UPS Fringe Benefits</span><span class="section-toggle">▼</span></h2>
+      <div class="section-content">
+        <div class="grid">
+          <label><span>Employment Type</span>
+            <select id="upsEmploymentType">
+              <option value="fulltime">Full-Time</option>
+              <option value="parttime">Part-Time</option>
+            </select>
+          </label>
+          <label><span>Job Classification</span>
+            <select id="upsJobClass">
+              <option value="driver">Driver (Article 41)</option>
+              <option value="warehouse">Warehouse (Article 22)</option>
+            </select>
+          </label>
+        </div>
+        <div class="grid">
+          <label><span>Weekly H&W + Pension Increase</span><input id="upsWeeklyIncrease" type="number" step="0.01" placeholder="40" value="40"/></label>
+          <label><span>Current Total Weekly H&W + Pension</span><input id="upsWeeklyBaseTotal" type="number" step="0.01" placeholder="e.g., 50 (≈$2,600/yr)"/></label>
+          <label><span>H&W Hourly Allocation</span><input id="upsHWPerHour" type="number" step="0.01" placeholder="0.50" value="0.50"/></label>
+        </div>
+        <div class="grid">
+          <label><span>Current Pension Accrual ($/yr)</span><input id="upsPensionAccrual" type="number" step="0.01" placeholder="65" value="65"/></label>
+          <label><span>Max Credited Service Years</span><input id="upsMaxServiceYears" type="number" step="1" placeholder="35" value="35"/></label>
+        </div>
+        <div class="grid">
+          <label><span>Annual Fringe Growth % (H&W + Pension)</span><input id="upsFringeGrowth" type="number" step="0.01" placeholder="6.0" value="6"/></label>
+        </div>
+        <div class="help">2023-2028: $40/week annual increase (Aug 1), H&W $0.50/hr, Pension $65/yr. Full details from UPS NMA 2023-2028 Articles 34 & 41. Annual Fringe Growth defaults to 6% (KFF Employer Health Benefits Survey 2025) so health and pension contributions escalate with observed trend.</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2><span>Legally Required Benefits (Employer Payroll Taxes)</span><span class="section-toggle">▼</span></h2>
+      <div class="section-content">
+        <div class="grid">
+          <label><span>OASDI Rate %</span><input id="oasdiRate" type="number" step="0.01" value="6.2"/></label>
+          <label><span>OASDI Wage Base</span><input id="oasdiBase" type="number" step="100" value="176100"/></label>
+          <label><span>Medicare Rate %</span><input id="medicareRate" type="number" step="0.01" value="1.45"/></label>
+        </div>
+        <div class="grid">
+          <label><span>Net FUTA Rate %</span><input id="futaRate" type="number" step="0.01" value="0.6"/></label>
+          <label><span>FUTA Wage Base</span><input id="futaBase" type="number" step="100" value="7000"/></label>
+          <label><span>State UI (SUTA) Rate %</span><input id="sutaRate" type="number" step="0.01" value="2.7"/></label>
+          <label><span>SUTA Wage Base</span><input id="sutaBase" type="number" step="100" value="24000"/></label>
+        </div>
+        <div class="grid">
+          <label><span>Workers' Compensation %</span><input id="workersCompRate" type="number" step="0.01" value="1.2"/></label>
+          <label class="row"><input id="applyLegalsToActual" type="checkbox" checked/> <span>Apply legally required benefits to mitigation earnings automatically</span></label>
+        </div>
+        <div class="help">Defaults follow 2025 statutory parameters: SSA wage base $176,100 (6.2%), Medicare 1.45% uncapped, FUTA 0.6% net on first $7,000, illustrative SUTA 2.7% on $24k, Workers&rsquo; Comp 1.2%. Adjust per jurisdiction/state as needed. These amounts are added to both but-for and actual streams per BLS ECEC guidance.</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2><span>AEF Builder</span><span class="section-toggle">▼</span></h2>
+      <div class="section-content">
+        <div class="grid">
+          <label><span>Unemployment Rate % (UR)</span><input id="aefUR" type="number" step="0.01" placeholder="3.0"/></label>
+          <label><span>Unemployment Reimbursement % (URF)</span><input id="aefURF" type="number" step="0.01" placeholder="30"/></label>
+          <label><span>Federal Tax % (TLF)</span><input id="aefTLF" type="number" step="0.01" placeholder="22"/></label>
+          <label><span>State Tax % (TLS)</span><input id="aefTLS" type="number" step="0.01" placeholder="5"/></label>
+        </div>
+        <div class="grid">
+          <label><span>Apply AEF</span>
+            <select id="aefMode">
+              <option value="off">Off</option>
+              <option value="on">On (Tinari-style)</option>
+            </select>
+          </label>
+        <label><span>Worklife Ratio (auto WLE/YFS)</span><input id="aefWLR" type="text" disabled/></label>
+        <label><span>Effective Unemployment % (UR x (1 - URF))</span><input id="aefUFEff" type="text" disabled/></label>
+        <label><span>Effective Tax % (1 - (1 - TLF) x (1 - TLS))</span><input id="aefTLEff" type="text" disabled/></label>
+        <label><span>Combined Tax % (TLF + TLS)</span><input id="aefTLCombined" type="text" disabled/></label>
+        <label><span>Fringe Benefit % (FB)</span><input id="aefFringePct" type="number" step="0.01" placeholder="30"/></label>
+        <label class="wd-only" style="display:none"><span>Personal Consumption % (PC)</span><input id="aefPC" type="number" step="0.01" placeholder="0"/></label>
+        <label class="wd-only" style="display:none"><span>Personal Maintenance % (PM)</span><input id="aefPM" type="number" step="0.01" placeholder="0"/></label>
+        <label><span>Computed Wage AEF</span><input id="aefValue" type="text" disabled/></label>
+        </div>
+        <div class="grid" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+          <label><span>Fringe Benefit AEF Treatment</span>
+            <select id="fringeAEFMode">
+              <option value="none">No AEF on Fringes (1.0)</option>
+              <option value="partial" selected>Partial AEF (WLR × Unemployment only, no tax)</option>
+              <option value="full">Full AEF (Same as wages)</option>
+            </select>
+          </label>
+          <label><span>Computed Fringe AEF</span><input id="fringeAEFValue" type="text" disabled/></label>
+        </div>
+        <div class="help" style="margin-top:8px">
+          <strong>Wage AEF</strong> = (WLE/YFS) × (1 - UR×(1-URF)) × (1 - TL_eff) × (1 - PC) × (1 - PM)<br/>
+          <strong>Fringe AEF options:</strong><br/>
+          • <strong>None:</strong> Fringes not reduced (1.0) - assumes fringes accrue regardless<br/>
+          • <strong>Partial:</strong> (WLE/YFS) × (1 - UR×(1-URF)) - includes work-life and unemployment, but NOT taxes (fringes aren't taxed)<br/>
+          • <strong>Full:</strong> Same as wage AEF - conservative approach treating fringes like wages<br/>
+          TL_eff = 1 - (1 - TLF) × (1 - TLS). PC and PM are WD-only.
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2><span>Mitigation</span><span class="section-toggle">▼</span></h2>
+      <div class="section-content">
+        <div class="grid">
+          <label><span>Actual Earnings Start</span><input id="actStart" type="date"/></label>
+          <label><span>Mitigation Annual Earnings</span><input id="actAnnual" type="number" step="0.01" placeholder="0"/></label>
+          <label><span>Mitigation Growth %</span><input id="actGrowth" type="number" step="0.01" placeholder="0"/></label>
+          <label><span>Mitigation Fringe %</span><input id="actFringePct" type="number" step="0.01" placeholder="0"/></label>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2><span>Include/Exclude Components</span><span class="section-toggle">▼</span></h2>
+      <div class="section-content">
+        <div class="help" style="margin-bottom:10px">Toggle calculation components on/off. Disabled components are excluded from loss calculations and totals.</div>
+        <div class="grid grid-1">
+          <label class="row"><input id="includeAEF" type="checkbox" checked/> <span>Include AEF Adjustment (Adjusted Earnings Factor)</span></label>
+          <label class="row"><input id="includeLegals" type="checkbox" checked/> <span>Include Legally Required Benefits (payroll taxes)</span></label>
+          <label class="row"><input id="includeBFFringe" type="checkbox" checked/> <span>Include But-For Fringe Benefits</span></label>
+          <label class="row"><input id="includeMitigation" type="checkbox" checked/> <span>Include Mitigation/Actual Earnings (offset against loss)</span></label>
+          <label class="row"><input id="includeActualFringe" type="checkbox" checked/> <span>Include Actual Fringe (offset against loss)</span></label>
+          <label class="row"><input id="includeDiscounting" type="checkbox" checked/> <span>Include Discounting (present value calculations)</span></label>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2><span>Discounting</span><span class="section-toggle">▼</span></h2>
+      <div class="section-content">
+        <div class="grid">
+          <label><span>Discount Method</span>
+            <select id="discMethod">
+              <option value="nominal">Nominal: discount r, grow g</option>
+              <option value="real">Real: use real rates</option>
+              <option value="ndr">Net Discount Rate (r - g)</option>
+            </select>
+          </label>
+          <label class="ndr-only" style="display:none"><span>Net Discount Rate %</span><input id="ndr" type="number" step="0.01" placeholder="1.5"/></label>
+          <label class="nomreal-only"><span>Discount Rate r %</span><input id="discRate" type="number" step="0.01" placeholder="5"/></label>
+          <label class="nominal-only"><span>Growth for Discount Model g %</span><input id="discGrowth" type="number" step="0.01" placeholder="3"/></label>
+        </div>
+        <div class="grid grid-1">
+          <label class="row"><input id="roundDisplay" type="checkbox" checked/> <span>Round currency at display only</span></label>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button class="btn" id="btnLoad">Load JSON</button>
+          <button class="btn" id="btnSave">Save JSON</button>
+        </div>
+        <div class="help">Use Save to export assumptions, then Load to reproduce results exactly.</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2><span>Actions</span><span class="section-toggle">▼</span></h2>
+      <div class="section-content">
+        <div class="row">
+          <button class="btn primary" id="btnRun">Compute</button>
+          <button class="btn" id="btnExportCsv">Export CSV</button>
+          <button class="btn" id="btnExportWord">Export Word</button>
+          <button class="btn" id="btnExportExcel">Export Excel</button>
+        </div>
+        <div class="row" style="margin-top:6px">
+          <button class="btn" id="btnPrint">Print</button>
+          <button class="btn" id="btnRunTests">Run Tests</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <div><span class="small">Framework: pre vs post, age tracking, AEF per algebraic method, PV at report date.</span></div>
+      <div><span class="small" id="autosaveStatus">Autosave: idle</span></div>
+    </div>
+  </aside>
+
+  <main>
+    <header>
+      <div>
+        <h1>But-For Damages Analyzer</h1>
+        <div class="small">Single-file app for earnings, benefits, AEF, and PV calculations.</div>
+      </div>
+      <div class="row"><span class="pill" id="pillStatus">Ready</span></div>
+    </header>
+
+    <div class="toolbar">
+      <button class="btn ghost" id="toggleAEFTable">Show AEF Breakdown</button>
+      <button class="btn ghost" id="toggleAssumps">Show Assumptions JSON</button>
+      <button class="btn ghost" id="toggleHelp">Show Column Explanations</button>
+      <button class="btn ghost" id="toggleEditMode">✏️ Enable Edit Mode</button>
+      <button class="btn" id="clearOverrides" style="display:none">🗑️ Clear All Overrides</button>
+      <span class="pill" id="editModeStatus" style="display:none">Edit Mode: Click ACT Earn cells to edit</span>
+    </div>
+
+    <div id="aefTableSection" style="display:none; padding: 10px 20px; background: var(--panel); border-bottom: 1px solid var(--border);">
+      <h3 style="color: var(--accent); margin-bottom: 10px;">Adjusted Earnings Factor (AEF) Breakdown</h3>
+      <div style="overflow:auto; border:1px solid var(--border); border-radius: 12px; margin-bottom:12px;">
+        <table id="aefTable" style="width:100%; border-collapse:collapse; font-size:13px;">
+          <thead>
+            <tr style="background:var(--panel-2);">
+              <th style="text-align:left; padding:10px;">Component</th>
+              <th style="text-align:right; padding:10px;">Value</th>
+              <th style="text-align:left; padding:10px;">Description</th>
+            </tr>
+          </thead>
+          <tbody id="aefTableBody">
+          </tbody>
+        </table>
+      </div>
+      <div class="help">
+        This table shows how the Adjusted Earnings Factor (AEF) is calculated from its component parts. The AEF is applied to but-for wages to account for work-life probability, unemployment, taxes, and case-specific adjustments. Fringe benefits receive a separate AEF treatment as shown.
+      </div>
+    </div>
+
+    <div class="cards" id="kpis">
+      <div class="card"><h3>Total Damages (PV)</h3><div class="big" id="kTotal">$0</div></div>
+      <div class="card"><h3>Past Damages</h3><div class="big" id="kPast">$0</div></div>
+      <div class="card"><h3>Future Damages (PV)</h3><div class="big" id="kFuture">$0</div></div>
+      <div class="card"><h3>Ages</h3><div class="small" id="kAges">Injury: - | Today: -</div></div>
+      <div class="card"><h3>Key Dates</h3><div class="small" id="kDates">Retirement: - | LE date: -</div></div>
+    </div>
+
+    <div class="tabs">
+      <button class="tabbtn active" data-tab="pre">Pre-Injury Table</button>
+      <button class="tabbtn" data-tab="post">Post-Injury Table</button>
+      <button class="tabbtn" data-tab="all">All Years</button>
+      <button class="tabbtn" data-tab="retirement">Retirement Scenarios</button>
+      <button class="tabbtn" data-tab="sensitivity">Sensitivity Analysis</button>
+    </div>
+
+    <div class="content">
+      <div id="assumps" style="display:none; padding: 10px 20px;">
+        <h3>Assumptions JSON</h3>
+        <pre class="json" id="assumpsJson"></pre>
+      </div>
+
+      <div id="helpSection" style="display:none; padding: 10px 20px; margin-bottom: 20px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px;">
+        <h3>Column Explanations</h3>
+        <div style="padding: 10px; margin-bottom: 16px; background: var(--panel-2); border-radius: 8px; border: 1px solid var(--border);">
+          <strong>Note:</strong> You can toggle calculation components on/off using the "Include/Exclude Components" section in the left panel. When a component is disabled, it will be excluded from the loss calculations and totals. If an error occurs due to disabled components, it will be displayed in red in the table.
+        </div>
+        <div style="line-height: 1.6; color: var(--text);">
+          <h4 style="color: var(--accent); margin-top: 16px;">Time & Demographics</h4>
+          <p><strong>Year:</strong> Calendar year for this row of calculations.</p>
+          <p><strong>Age:</strong> Evaluee's age at mid-year (July 1), calculated using Actual/Actual ISDA day-count convention from date of birth.</p>
+          <p><strong>Portion:</strong> Fraction of the year included in calculations (0.0-1.0). Partial years occur at the start (incident date) and end (retirement/report date) of the analysis period.</p>
+
+          <h4 style="color: var(--accent); margin-top: 16px;">But-For Earnings (What Would Have Been Earned)</h4>
+          <p><strong>But-For Wages:</strong> Base annual earnings in the but-for scenario (what the individual would have earned absent the injury), adjusted for the year portion and annual wage growth. This is the gross wages before any adjustments.</p>
+          <p><strong>But-For Adj.:</strong> But-for wages multiplied by the Adjusted Earnings Factor (AEF). The AEF accounts for:<br/>
+            • Work-life ratio (WLE/YFS)<br/>
+            • Unemployment probability adjusted for reimbursement<br/>
+            • Tax effects (federal and state, using multiplicative method)<br/>
+            • For wrongful death cases: personal consumption and maintenance deductions<br/>
+            Formula: AEF = (WLE/YFS) × (1 - UR×(1-URF)) × (1 - TL_eff) × (1 - PC) × (1 - PM)
+          </p>
+          <p><strong>Fringe / H&W / Pension / Fringe Total:</strong> Employee benefits associated with but-for earnings.<br/>
+            • <em>Simple Method:</em> Calculated as a percentage of gross wages (e.g., 20%)<br/>
+            • <em>UPS-Specific Method:</em> Breaks down into:<br/>
+            &nbsp;&nbsp;- <strong>H&W (Health & Welfare):</strong> Calculated per hour worked (e.g., $0.50/hour × 2080 hours)<br/>
+            &nbsp;&nbsp;- <strong>Pension:</strong> Based on weekly increases from union contract minus H&W portion (e.g., $40/week - $20 H&W = $20/week for pension)<br/>
+            &nbsp;&nbsp;- <strong>Fringe Total:</strong> Sum of H&W + Pension contributions
+          </p>
+
+          <h4 style="color: var(--accent); margin-top: 16px;">Actual Earnings (What Was Actually Earned)</h4>
+          <p><strong>Actual Wages:</strong> Mitigation earnings actually earned post-injury, adjusted for the year portion and actual wage growth rate. Only appears starting from the "actual earnings start date" you specify.</p>
+          <p><strong>Actual Fringe:</strong> Benefits associated with actual post-injury earnings, calculated as a percentage of actual wages (typically lower than but-for fringe).</p>
+
+          <h4 style="color: var(--accent); margin-top: 16px;">Damages Calculations</h4>
+          <p><strong>Loss:</strong> Annual economic loss for this year, calculated as:<br/>
+            Loss = (But-For Adj. + Fringe Total) - (Actual Wages + Actual Fringe)<br/>
+            This represents the difference between what would have been earned and what was actually earned.
+          </p>
+          <p><strong>Past:</strong> Portion of the loss that occurred before the report/valuation date. For years entirely before the report date, this equals the full loss. For the report year, this is prorated based on what fraction of the year elapsed before the report date.</p>
+          <p><strong>Past + Int:</strong> Past damages with prejudgment interest applied (if enabled). Interest accrues from the mid-year point to the report date using the specified interest rate, compensating for the time value of money on damages already incurred.</p>
+          <p><strong>Future:</strong> Portion of the loss that occurs on or after the report date. For years entirely after the report date, this equals the full loss. For the report year, this is the complement of the past portion.</p>
+          <p><strong>PV Future:</strong> Present value of future damages, discounted back to the report date. The discount method (nominal, real, or net discount rate) determines how future losses are converted to present value. This accounts for the time value of money - a dollar today is worth more than a dollar in the future.</p>
+
+          <h4 style="color: var(--accent); margin-top: 16px;">Summary Metrics</h4>
+          <p><strong>Total Damages (PV):</strong> Sum of all past damages (with interest if enabled) plus present value of all future damages. This is the total economic loss expressed in today's dollars.</p>
+          <p><strong>Past Damages:</strong> Sum of all losses that occurred before the report date, including prejudgment interest if enabled.</p>
+          <p><strong>Future Damages (PV):</strong> Sum of all discounted future losses from the report date through retirement or end of work-life expectancy.</p>
+        </div>
+      </div>
+
+      <div id="results" style="padding: 0 20px;">
+        <h3 id="tblTitle">Pre-Injury: Incident to Report</h3>
+        <div class="small" style="margin-bottom: 8px">Values shown in current dollars with PV at report date.</div>
+        <div style="overflow:auto; border:1px solid var(--border); border-radius: 12px; margin-bottom:18px;">
+          <table id="table"></table>
+        </div>
+        <h3>Post-Injury: Report to Retirement</h3>
+        <div class="small" style="margin-bottom: 8px">PV at report date.</div>
+        <div style="overflow:auto; border:1px solid var(--border); border-radius: 12px;">
+          <table id="tablePost"></table>
+        </div>
+      </div>
+
+      <div id="sensitivityView" class="table-view" style="display:none;">
+        <h3>Sensitivity Analysis: Rate Variations</h3>
+        <div class="small" style="margin-bottom: 8px">Total Present Value damages at different discount and growth rate combinations (±3 percentage points).</div>
+
+        <!-- Summary Matrix -->
+        <div style="overflow:auto; border:1px solid var(--border); border-radius: 12px; margin-bottom: 16px;">
+          <table id="tableSensitivity" style="font-size: 12px;"></table>
+        </div>
+        <div class="small" style="color: var(--muted); margin-bottom: 16px;">
+          <strong>How to read:</strong> Each cell shows Total PV damages. Click any cell to view the full year-over-year schedule for that scenario. Rows = Discount Rate, Columns = Growth Rate. Base case shown with bold border.
+        </div>
+
+        <!-- Detailed Scenario View -->
+        <div id="scenarioDetail" style="display:none;">
+          <h3 id="scenarioTitle">Scenario Details</h3>
+          <div class="small" id="scenarioRates" style="margin-bottom: 8px;"></div>
+          <div class="small" style="margin-bottom: 8px;">
+            <button class="btn" id="btnCloseScenario" style="font-size: 12px; padding: 4px 8px;">← Back to Summary Matrix</button>
+          </div>
+          <div style="overflow:auto; border:1px solid var(--border); border-radius: 12px; margin-bottom: 16px;">
+            <table id="tableScenarioDetail" style="font-size: 12px;"></table>
+          </div>
+        </div>
+      </div>
+
+      <div id="retirementView" class="table-view" style="display:none;">
+        <h3>Retirement Age Scenarios</h3>
+        <div class="small" style="margin-bottom: 8px">Compare total damages under different retirement age assumptions.</div>
+        <div class="small" id="activeScenarioLabel" style="margin-bottom: 10px; font-weight: 600; color: var(--accent);"></div>
+
+        <!-- Summary Table -->
+        <div style="overflow:auto; border:1px solid var(--border); border-radius: 12px; margin-bottom: 16px;">
+          <table id="tableRetirementSummary"></table>
+        </div>
+
+        <div class="small" style="color: var(--muted); margin-bottom: 16px;">
+          <strong>Note:</strong> The first row reflects the assumed retirement age derived from Work Life Expectancy. Click any row to drive the KPIs and year-over-year summary; fixed-age scenarios (65, 67, 70) assume retirement exactly at those ages.
+        </div>
+
+        <!-- Year-over-Year Summary -->
+        <h3 style="margin-top: 24px;">Year-over-Year Loss Summary</h3>
+        <div class="small" style="margin-bottom: 8px">Detailed breakdown of annual losses.</div>
+        <div style="overflow:auto; border:1px solid var(--border); border-radius: 12px; margin-bottom: 16px;">
+          <table id="tableSummary"></table>
+        </div>
+        <div class="small" id="summaryQA" style="margin-bottom: 12px; color: var(--muted);"></div>
+
+        <div class="small" style="margin-top: 12px; margin-bottom: 4px;">QA Checklist</div>
+        <ul id="complianceChecklist" style="list-style: disc; padding-left: 20px; color: var(--muted); font-size: 12px;"></ul>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script type="module" src="./api-bridge.js"></script>
+<script>
+// Provide a safe fallback if the API bridge fails to load
+window.profileAdapter = window.profileAdapter || {
+  async getProfile(){ return null; },
+  async getAllProfiles(){ return {}; },
+  async saveProfile(){ throw new Error('API bridge unavailable'); },
+  async deleteProfile(){ /* no-op */ },
+  async saveCalculation(){ /* no-op */ }
+};
+</script>
+
+<script>
+const $ = sel => document.querySelector(sel);
+const $$ = sel => Array.from(document.querySelectorAll(sel));
+const round2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
+const fmt = (n, round) => { let x = Number(n || 0); if (round) x = round2(x); return x.toLocaleString(undefined, { style: 'currency', currency: 'USD' }); };
+const fmtDate = d => d instanceof Date && !isNaN(d) ? d.toLocaleDateString(undefined, {year:'numeric', month:'long', day:'numeric'}) : '-';
+
+// --- Collapsible Sections ---
+function initCollapsibleSections() {
+  $$('.section h2').forEach(header => {
+    header.addEventListener('click', () => {
+      const section = header.parentElement;
+      const content = section.querySelector('.section-content');
+      const toggle = header.querySelector('.section-toggle');
+
+      if (content && toggle) {
+        const isCollapsed = content.classList.contains('collapsed');
+
+        if (isCollapsed) {
+          // Expand
+          content.classList.remove('collapsed');
+          toggle.classList.remove('collapsed');
+          toggle.textContent = '▼';
+        } else {
+          // Collapse
+          content.classList.add('collapsed');
+          toggle.classList.add('collapsed');
+          toggle.textContent = '▶';
+        }
+      }
+    });
+  });
+}
+
+// --- Manual Earnings Overrides ---
+let manualEarningsOverrides = {}; // { year: { actE: number, actFringe: number } }
+let editModeEnabled = false;
+
+function setManualOverride(year, actE, actFringe) {
+  manualEarningsOverrides[year] = { actE: Number(actE) || 0, actFringe: Number(actFringe) || 0 };
+}
+
+function getManualOverride(year) {
+  return manualEarningsOverrides[year] || null;
+}
+
+function clearManualOverrides() {
+  if (confirm('Clear all manual overrides? This will restore automatic calculations.')) {
+    manualEarningsOverrides = {};
+    runCompute();
+  }
+}
+
+function hasAnyOverrides() {
+  return Object.keys(manualEarningsOverrides).length > 0;
+}
+
+// --- Profiles (localStorage) ---
+const PROFILE_KEY = 'bfda_profiles_v1';
+const LEGACY_PROFILE_KEYS = ['bfda_profiles', 'profiles', 'bfda_profiles_backup'];
+function loadProfileMap(){
+  try {
+    const merged = {};
+    // Collect from known keys
+    const keys = new Set([PROFILE_KEY, ...LEGACY_PROFILE_KEYS]);
+    // Collect from any other localStorage keys that look profile-related
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i) || '';
+      if (k.toLowerCase().includes('profile')) keys.add(k);
+    }
+    keys.forEach(k => {
+      const raw = localStorage.getItem(k);
+      if (!raw) return;
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          Object.assign(merged, parsed);
+        }
+      } catch(_) { /* ignore bad entries */ }
+    });
+    // normalize back to the primary key so everything is in one place
+    localStorage.setItem(PROFILE_KEY, JSON.stringify(merged));
+    return merged;
+  } catch(_) { return {}; }
+}
+function saveProfileMap(map){ localStorage.setItem(PROFILE_KEY, JSON.stringify(map)); }
+async function refreshProfileSelect(){
+  const sel = ui.profileSelect;
+  if (!sel) {
+    console.error('profileSelect element not found');
+    return;
+  }
+  sel.innerHTML = '';
+  const opt = document.createElement('option');
+  opt.value='';
+  opt.textContent='Select profile';
+  sel.appendChild(opt);
+
+  // Load from localStorage
+  const localMap = loadProfileMap();
+  const localNames = Object.keys(localMap).sort();
+
+  // Load from database API
+  let dbNames = [];
+  try {
+    const response = await fetch('/api/evaluees');
+    if (response.ok) {
+      const data = await response.json();
+      if (data.success && data.evaluees) {
+        dbNames = data.evaluees.map(e => e.profile_name).sort();
+      }
+    }
+  } catch(e) {
+    console.log('Could not fetch profiles from database:', e);
+  }
+
+  // Combine and deduplicate
+  const allNames = [...new Set([...localNames, ...dbNames])].sort();
+
+  // Add localStorage group
+  if (localNames.length > 0) {
+    const optgroup = document.createElement('optgroup');
+    optgroup.label = 'Local Profiles (Browser)';
+    localNames.forEach(name => {
+      const o = document.createElement('option');
+      o.value = 'local:' + name;
+      o.textContent = name;
+      optgroup.appendChild(o);
+    });
+    sel.appendChild(optgroup);
+  }
+
+  // Add database group
+  if (dbNames.length > 0) {
+    const optgroup = document.createElement('optgroup');
+    optgroup.label = 'Database Profiles';
+    dbNames.forEach(name => {
+      const o = document.createElement('option');
+      o.value = 'db:' + name;
+      o.textContent = name;
+      optgroup.appendChild(o);
+    });
+    sel.appendChild(optgroup);
+  }
+}
+
+// --- Robust date helpers (Actual/Actual ISDA year fraction) ---
+const MS_PER_DAY = 24*60*60*1000;
+const UPS_COMPOSITE_FRINGE_DEFAULT = 0.646; // Provided UPS plan composite fringe loading (≈64.6% of base comp)
+const isLeap = y => (y%4===0 && y%100!==0) || (y%400===0);
+const daysInYear = y => isLeap(y) ? 366 : 365;
+function toUTCDate(d){ const x = new Date(d); return new Date(Date.UTC(x.getUTCFullYear(), x.getUTCMonth(), x.getUTCDate())); }
+function yearFrac(a,b){
+  let start = toUTCDate(a), end = toUTCDate(b);
+  if (end < start){ const t = start; start = end; end = t; }
+  let acc = 0; let cur = start;
+  while (cur < end){
+    const y = cur.getUTCFullYear();
+    const nextYear = new Date(Date.UTC(y+1,0,1));
+    const chunkEnd = end < nextYear ? end : nextYear;
+    const days = (chunkEnd - cur) / MS_PER_DAY;
+    acc += days / daysInYear(y);
+    cur = chunkEnd;
+  }
+  return acc;
+}
+function daysBetween(a,b){ return (toUTCDate(b) - toUTCDate(a)) / MS_PER_DAY; }
+function addYears(d, yrs){
+  const x = toUTCDate(d);
+  const whole = Math.trunc(yrs);
+  const frac = yrs - whole;
+  const base = new Date(Date.UTC(x.getUTCFullYear()+whole, x.getUTCMonth(), x.getUTCDate()));
+  if (frac === 0) return base;
+  const y = base.getUTCFullYear();
+  const days = frac * daysInYear(y);
+  return new Date(base.getTime() + days*MS_PER_DAY);
+}
+function ageOn(dob, on){ return Math.floor(yearFrac(dob, on)); }
+
+const ui = {
+  profileName: $('#profileName'), profileSelect: $('#profileSelect'), profileSave: $('#profileSave'), profileSaveDB: $('#profileSaveDB'), profileSyncLocalToDb: $('#profileSyncLocalToDb'), profileLoad: $('#profileLoad'), profileDuplicate: $('#profileDuplicate'), profileDelete: $('#profileDelete'), profileExport: $('#profileExport'), profileImport: $('#profileImport'),
+  caseName: $('#caseName'), caseType: $('#caseType'), dob: $('#dob'), valuationDate: $('#valuationDate'), incidentDate: $('#incidentDate'), retireDate: $('#retireDate'),
+  wleYears: $('#wleYears'), yfsYears: $('#yfsYears'), leYears: $('#leYears'), pjiYears: $('#pjiYears'), pjiRetireDate: $('#pjiRetireDate'),
+  applySurvival: $('#applySurvival'), lifeTablePopulation: $('#lifeTablePopulation'), lifeTableSource: $('#lifeTableSource'),
+  wageSourceNotes: $('#wageSourceNotes'), benefitSourceNotes: $('#benefitSourceNotes'),
+  bfBase: $('#bfBase'), bfFringePct: $('#bfFringePct'), fringeMethod: $('#fringeMethod'), bfGrowthMethod: $('#bfGrowthMethod'), bfGrowth: $('#bfGrowth'), bfGrowthSeries: $('#bfGrowthSeries'),
+  upsEmploymentType: $('#upsEmploymentType'), upsJobClass: $('#upsJobClass'), upsWeeklyIncrease: $('#upsWeeklyIncrease'), upsWeeklyBaseTotal: $('#upsWeeklyBaseTotal'), upsHWPerHour: $('#upsHWPerHour'), upsPensionAccrual: $('#upsPensionAccrual'), upsMaxServiceYears: $('#upsMaxServiceYears'), upsFringeGrowth: $('#upsFringeGrowth'),
+  oasdiRate: $('#oasdiRate'), oasdiBase: $('#oasdiBase'), medicareRate: $('#medicareRate'),
+  futaRate: $('#futaRate'), futaBase: $('#futaBase'), sutaRate: $('#sutaRate'), sutaBase: $('#sutaBase'),
+  workersCompRate: $('#workersCompRate'), applyLegalsToActual: $('#applyLegalsToActual'),
+  aefUR: $('#aefUR'), aefURF: $('#aefURF'), aefTLF: $('#aefTLF'), aefTLS: $('#aefTLS'), aefPC: $('#aefPC'), aefPM: $('#aefPM'), aefMode: $('#aefMode'), aefWLR: $('#aefWLR'), aefUFEff: $('#aefUFEff'), aefTLEff: $('#aefTLEff'), aefTLCombined: $('#aefTLCombined'), aefValue: $('#aefValue'), fringeAEFMode: $('#fringeAEFMode'), fringeAEFValue: $('#fringeAEFValue'),
+  aefFringePct: $('#aefFringePct'),
+  actStart: $('#actStart'), actAnnual: $('#actAnnual'), actGrowth: $('#actGrowth'), actFringePct: $('#actFringePct'),
+  includeAEF: $('#includeAEF'), includeLegals: $('#includeLegals'), includeBFFringe: $('#includeBFFringe'), includeMitigation: $('#includeMitigation'), includeActualFringe: $('#includeActualFringe'), includeDiscounting: $('#includeDiscounting'),
+  discMethod: $('#discMethod'), ndr: $('#ndr'), discRate: $('#discRate'), discGrowth: $('#discGrowth'), roundDisplay: $('#roundDisplay'),
+  btnRun: $('#btnRun'), btnExportCsv: $('#btnExportCsv'), btnPrint: $('#btnPrint'), btnSave: $('#btnSave'), btnLoad: $('#btnLoad'), btnRunTests: $('#btnRunTests'),
+  btnExportExcel: $('#btnExportExcel'), btnExportWord: $('#btnExportWord'),
+  table: $('#table'), tablePost: $('#tablePost'), kTotal: $('#kTotal'), kPast: $('#kPast'), kFuture: $('#kFuture'), kMethod: $('#kMethod'), pillStatus: $('#pillStatus'),
+  toggleAssumps: $('#toggleAssumps'), assumps: $('#assumps'), assumpsJson: $('#assumpsJson'),
+  toggleHelp: $('#toggleHelp'), helpSection: $('#helpSection'),
+  bfGrowthMethodSel: $('#bfGrowthMethod'), seriesOnly: $$('.series-only'), fixedOnly: $$('.fixed-only'), upsGrowthOnly: $$('.ups-growth-only'),
+  fringeMethodSel: $('#fringeMethod'), simpleFringe: $$('.simple-fringe'), upsFringeSection: $$('.ups-fringe'),
+  discMethodSel: $('#discMethod'), ndrOnly: $$('.ndr-only'), nomRealOnly: $$('.nomreal-only'), nominalOnly: $$('.nominal-only'),
+  kAges: $('#kAges'), kDates: $('#kDates'),
+  autosaveMinutes: $('#autosaveMinutes'), autosaveStatus: $('#autosaveStatus')
+};
+
+// UPS Contract Data (2013-2028)
+const UPS_CONTRACT_DATA = {
+  // 2023-2028 Contract
+  '2023-2028': {
+    wageIncreases: [2.75, 0.75, 0.75, 1.00, 2.25], // Aug 1: 2023-2027
+    hwPerHour: 0.50, // Annual H&W allocation per hour
+    weeklyIncrease: 40.00, // Total weekly H&W + Pension increase
+    pensionAccrual: 65.00, // $ per credited service year
+    maxServiceYears: 35,
+    effectiveDates: ['2023-08-01', '2024-08-01', '2025-08-01', '2026-08-01', '2027-08-01']
+  },
+  // 2018-2023 Contract
+  '2018-2023': {
+    wageIncreases: [2.75, 0.70, 0.70, 0.70, 0.70], // Estimated
+    hwPerHour: 0.50, // Full-time
+    hwPerHourPT: 0.30, // Part-time 2018-2020, up to 0.50 2021-2022
+    weeklyIncrease: 40.00,
+    pensionAccrual: 60.00,
+    maxServiceYears: 35,
+    effectiveDates: ['2018-08-01', '2019-08-01', '2020-08-01', '2021-08-01', '2022-08-01']
+  },
+  // 2013-2018 Contract
+  '2013-2018': {
+    wageIncreases: [0.70, 0.70, 0.70, 0.70, 0.70], // Estimated avg
+    hwPerHour: 0.50,
+    weeklyIncrease: 40.00,
+    pensionAccrual: 55.00,
+    maxServiceYears: 35,
+    effectiveDates: ['2013-08-01', '2014-08-01', '2015-08-01', '2016-08-01', '2017-08-01']
+  }
+};
+
+const CDC_SURVIVAL_TABLE = {
+  combined: [1,0.999441,0.998881,0.998321,0.997759,0.997196,0.996631,0.996065,0.995496,0.994925,0.994352,0.993775,0.993195,0.992611,0.992023,0.991429,0.99083,0.990224,0.989611,0.988989,0.988358,0.987717,0.987063,0.986395,0.985712,0.985012,0.984291,0.983549,0.982782,0.981986,0.981158,0.980295,0.979391,0.978441,0.97744,0.976381,0.975256,0.974058,0.972778,0.971404,0.969925,0.968329,0.9666,0.964722,0.962676,0.960442,0.957996,0.955313,0.952364,0.949116,0.945534,0.941577,0.937202,0.932358,0.926992,0.921043,0.914446,0.907128,0.89901,0.890006,0.880025,0.868965,0.856723,0.843186,0.828237,0.811756,0.793623,0.773718,0.751926,0.728142,0.702275,0.674259,0.644054,0.61166,0.577127,0.540561,0.50214,0.462118,0.420835,0.378721,0.336295,0.294152,0.252953,0.213395,0.176174,0.141944,0.111266,0.084557,0.062054,0.043782,0.029548,0.018968,0.011508,0.006552,0.003472,0.001697,0.000757,0.000305,0.000109,0.000034,0.000009,0.000002,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  female: [1,0.999492,0.998984,0.998475,0.997965,0.997454,0.996942,0.996428,0.995913,0.995395,0.994876,0.994354,0.993829,0.993301,0.992769,0.992233,0.991693,0.991147,0.990595,0.990037,0.989471,0.988896,0.988312,0.987716,0.987109,0.986487,0.98585,0.985196,0.984521,0.983824,0.983102,0.982352,0.98157,0.980752,0.979894,0.978991,0.978037,0.977025,0.97595,0.974802,0.973572,0.972252,0.970829,0.969291,0.967624,0.965812,0.963838,0.961681,0.95932,0.956731,0.953885,0.950752,0.947298,0.943486,0.939274,0.934615,0.929459,0.923749,0.917422,0.910413,0.902646,0.894041,0.884512,0.873966,0.862303,0.849419,0.835203,0.819542,0.802321,0.783425,0.762741,0.740166,0.715606,0.688986,0.660255,0.629396,0.59643,0.561431,0.52453,0.485931,0.445911,0.404831,0.363136,0.321351,0.280071,0.239942,0.201632,0.165798,0.13304,0.103857,0.078605,0.057457,0.040384,0.02716,0.017382,0.01052,0.005979,0.003166,0.001549,0.000693,0.00028,0.000101,0.000032,0.000009,0.000002,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  male: [1,0.99939,0.998779,0.998167,0.997554,0.996939,0.996323,0.995704,0.995083,0.99446,0.993833,0.993203,0.992569,0.99193,0.991286,0.990637,0.98998,0.989316,0.988643,0.98796,0.987266,0.98656,0.985839,0.985102,0.984346,0.98357,0.98277,0.981944,0.981088,0.980198,0.97927,0.978298,0.977278,0.976202,0.975064,0.973856,0.972569,0.971193,0.969715,0.968124,0.966405,0.964542,0.962516,0.960307,0.957892,0.955246,0.952339,0.94914,0.945611,0.941715,0.937404,0.932631,0.92734,0.92147,0.914955,0.90772,0.899686,0.890763,0.880858,0.869868,0.857684,0.844189,0.829263,0.812781,0.794617,0.774643,0.75274,0.728795,0.702714,0.674422,0.643877,0.611077,0.576072,0.538973,0.499965,0.459317,0.417389,0.374636,0.331606,0.288931,0.247306,0.207465,0.170133,0.135984,0.105584,0.079338,0.05745,0.039898,0.02643,0.016598,0.009814,0.005421,0.002772,0.0013,0.000552,0.00021,0.000071,0.000021,0.000005,0.000001,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+};
+
+function getUPSContractForYear(year) {
+  if (year >= 2023 && year <= 2028) return { period: '2023-2028', data: UPS_CONTRACT_DATA['2023-2028'] };
+  if (year >= 2018 && year < 2023) return { period: '2018-2023', data: UPS_CONTRACT_DATA['2018-2023'] };
+  if (year >= 2013 && year < 2018) return { period: '2013-2018', data: UPS_CONTRACT_DATA['2013-2018'] };
+  // Default to most recent contract for future years
+  return { period: '2023-2028', data: UPS_CONTRACT_DATA['2023-2028'] };
+}
+
+function getUPSWageGrowthForYear(year, contractStart) {
+  const contract = getUPSContractForYear(year);
+  const yearInContract = year - parseInt(contract.period.split('-')[0]);
+  if (yearInContract >= 0 && yearInContract < contract.data.wageIncreases.length) {
+    return contract.data.wageIncreases[yearInContract] / 100;
+  }
+  return 0.03; // Default 3% if outside contract period
+}
+
+function getSurvivalProbability(age, A){
+  const apply = (A.lifeTable && A.lifeTable.applySurvival !== false) || (A.options && A.options.applySurvival);
+  if (!apply) return 1;
+  const population = (A.lifeTable && A.lifeTable.population) || 'combined';
+  const table = CDC_SURVIVAL_TABLE[population] || CDC_SURVIVAL_TABLE.combined;
+  const idx = Math.min(Math.max(Math.floor(age), 0), table.length - 1);
+  return table[idx] ?? 1;
+}
+
+function toggleGrowthUI(){
+  const m = ui.bfGrowthMethodSel.value;
+  // Show/hide appropriate fields
+  ui.seriesOnly.forEach(el=> el.style.display = m==='series' ? '' : 'none');
+  ui.fixedOnly.forEach(el=> el.style.display = m==='fixed' ? '' : 'none');
+
+  // Disable conflicting inputs to prevent confusion
+  if (m === 'series') {
+    ui.bfGrowth.disabled = true;
+    ui.bfGrowthSeries.disabled = false;
+  } else if (m === 'fixed') {
+    ui.bfGrowth.disabled = false;
+    ui.bfGrowthSeries.disabled = true;
+  } else if (m === 'ups') {
+    // UPS contract rates - disable both manual inputs
+    ui.bfGrowth.disabled = true;
+    ui.bfGrowthSeries.disabled = true;
+  }
+}
+ui.bfGrowthMethodSel.addEventListener('change', toggleGrowthUI);
+
+function toggleFringeUI(){
+  const m = ui.fringeMethodSel.value;
+  ui.simpleFringe.forEach(el=> el.style.display = m==='simple' ? '' : 'none');
+  ui.upsFringeSection.forEach(el=> el.style.display = m==='ups' ? '' : 'none');
+
+  // Fringe % controlled from AEF builder; keep disabled for clarity
+  ui.bfFringePct.disabled = true;
+
+  if (m === 'ups') {
+    deriveUpsFringePctFromUi();
+  }
+}
+ui.fringeMethodSel.addEventListener('change', toggleFringeUI);
+
+function toggleDiscUI(){
+  const m = ui.discMethodSel.value;
+  ui.ndrOnly.forEach(el=> el.style.display = m==='ndr' ? '' : 'none');
+  ui.nomRealOnly.forEach(el=> el.style.display = m!=='ndr' ? '' : 'none');
+  ui.nominalOnly.forEach(el=> el.style.display = m==='nominal' ? '' : 'none');
+
+  // Disable fields not used by selected method
+  if (m === 'ndr') {
+    ui.ndr.disabled = false;
+    ui.discRate.disabled = true;
+    ui.discGrowth.disabled = true;
+  } else if (m === 'nominal') {
+    ui.ndr.disabled = true;
+    ui.discRate.disabled = false;
+    ui.discGrowth.disabled = false;
+  } else if (m === 'real') {
+    ui.ndr.disabled = true;
+    ui.discRate.disabled = false;
+    ui.discGrowth.disabled = true;
+  }
+}
+ui.discMethodSel.addEventListener('change', toggleDiscUI);
+ui.toggleAssumps.addEventListener('click', ()=>{ ui.assumps.style.display = ui.assumps.style.display==='none' ? '' : 'none'; });
+ui.toggleHelp.addEventListener('click', ()=>{ ui.helpSection.style.display = ui.helpSection.style.display==='none' ? '' : 'none'; });
+
+// Helpful tooltips for key toggles
+function attachTooltips(){
+  if (ui.discMethodSel) {
+    ui.discMethodSel.title = 'Nominal: discount in nominal terms. Real: discount after removing inflation. NDR: net discount rate (discount minus growth), growth axis disabled.';
+  }
+  if (ui.applySurvival) {
+    ui.applySurvival.title = 'When checked, future losses are weighted by CDC survival probabilities for the selected population.';
+  }
+  if (ui.includeMitigation) {
+    ui.includeMitigation.title = 'When on, mitigation earnings start on the specified date and are prorated from that point in the year.';
+  }
+  if (ui.includeLegals) {
+    ui.includeLegals.title = 'Include employer payroll taxes (OASDI/Medicare/FUTA/SUTA/Workers\' Comp) in both streams.';
+  }
+  if (ui.includeBFFringe) {
+    ui.includeBFFringe.title = 'Include employer fringe/benefits in the but-for stream (also baked into AEF when AEF is on).';
+  }
+}
+attachTooltips();
+
+// Recompute UPS fringe % when key UPS inputs change so the fringe factor stays in sync
+[
+  ui.bfBase,
+  ui.upsEmploymentType,
+  ui.upsJobClass,
+  ui.upsWeeklyIncrease,
+  ui.upsWeeklyBaseTotal,
+  ui.upsHWPerHour,
+  ui.upsPensionAccrual,
+  ui.upsMaxServiceYears,
+  ui.upsFringeGrowth,
+  ui.valuationDate,
+  ui.incidentDate
+].forEach(el=>{
+  el?.addEventListener('change', ()=>{ deriveUpsFringePctFromUi(); });
+});
+
+// Derive a UPS fringe % from the UPS inputs to auto-fill the fringe factor
+function computeUPSFringePctPreview(A){
+  try{
+    if(!A || A.butFor?.fringeMethod !== 'ups') return null;
+    const overridePct = A.upsFringe?.compositePct;
+    if (overridePct !== undefined && overridePct !== null) {
+      return overridePct;
+    }
+    if (UPS_COMPOSITE_FRINGE_DEFAULT) {
+      return UPS_COMPOSITE_FRINGE_DEFAULT;
+    }
+    const base = Number(A.butFor.baseAnnual||0);
+    if(!isFinite(base) || base<=0) return null;
+    const hoursPerYear = (A.upsFringe?.employmentType === 'fulltime') ? 2080 : 1300; // assume ~40hr vs ~25hr/week
+    let yr = new Date().getUTCFullYear();
+    const valStr = A.dates?.valuation || A.dates?.incident;
+    if(valStr){
+      const dt = new Date(valStr);
+      if(!isNaN(dt)) yr = dt.getUTCFullYear();
+    }
+    const upsFringe = calculateUPSFringe(A, yr, 1, hoursPerYear);
+    const pct = upsFringe?.total ? (upsFringe.total / base) : null;
+    return (pct && isFinite(pct)) ? pct : null;
+  }catch(err){
+    console.error('UPS fringe pct calc error', err);
+    return null;
+  }
+}
+
+function deriveUpsFringePctFromUi(){
+  const A = {
+    butFor: { baseAnnual: Number(ui.bfBase.value||0), fringeMethod: ui.fringeMethodSel.value },
+    upsFringe: {
+      employmentType: ui.upsEmploymentType.value,
+      jobClass: ui.upsJobClass.value,
+      weeklyIncrease: Number(ui.upsWeeklyIncrease.value||40),
+      weeklyBaseTotal: Number(ui.upsWeeklyBaseTotal.value||0),
+      hwPerHour: Number(ui.upsHWPerHour.value||0.50),
+      pensionAccrual: Number(ui.upsPensionAccrual.value||65),
+      maxServiceYears: Number(ui.upsMaxServiceYears.value||35),
+      fringeGrowth: Number(ui.upsFringeGrowth.value||0)/100,
+      compositePct: UPS_COMPOSITE_FRINGE_DEFAULT
+    },
+    dates: { valuation: ui.valuationDate.value, incident: ui.incidentDate.value }
+  };
+  const pct = computeUPSFringePctPreview(A);
+  if(pct !== null){
+    const pct100 = (pct*100).toFixed(2);
+    ui.aefFringePct.value = pct100;
+    ui.bfFringePct.value = pct100;
+  }
+}
+
+// AEF Table toggle and rendering
+$('#toggleAEFTable').addEventListener('click', ()=>{
+  const section = $('#aefTableSection');
+  section.style.display = section.style.display==='none' ? '' : 'none';
+  if (section.style.display !== 'none') {
+    renderAEFTable();
+  }
+});
+
+function renderAEFTable() {
+  const A = window.__ASSUMPTIONS__;
+  if (!A || !A.aef) return;
+
+  const tbody = $('#aefTableBody');
+  tbody.innerHTML = '';
+
+  const isWD = A.meta.caseType === 'wd';
+  const aefOn = A.aef.mode === 'on';
+
+  const rows = [];
+
+  // Gross Earnings Base
+  rows.push({ component: '<strong>Base Components</strong>', value: '', description: '' });
+
+  rows.push({
+    component: 'Gross Earnings Base (GE)',
+    value: '$' + ((A.aef.grossEarningsBase || A.butFor.salary || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })),
+    description: 'Base annual but-for salary'
+  });
+
+  // Header row
+  rows.push({ component: '<strong>Work-Life & Unemployment Components</strong>', value: '', description: '' });
+
+  // Work-Life Ratio
+  rows.push({
+    component: 'Worklife Adjusted Earnings Base (WLE)',
+    value: (A.aef.wle || 1).toFixed(5),
+    description: `WLE / YFS = ${A.horizon.wleYears || 0} / ${A.horizon.yfsYears || 0}`
+  });
+
+  // Unemployment Rate
+  rows.push({
+    component: 'Unemployment Rate (UR)',
+    value: ((A.aef.UR || 0) * 100).toFixed(2) + '%',
+    description: 'Probability of unemployment'
+  });
+
+  // Unemployment Reimbursement
+  rows.push({
+    component: 'Unemployment Reimbursement (URF)',
+    value: ((A.aef.URF || 0) * 100).toFixed(2) + '%',
+    description: 'Portion of unemployment offset by benefits'
+  });
+
+  // Effective Unemployment
+  rows.push({
+    component: 'Effective Unemployment',
+    value: ((A.aef.ufEff || 0) * 100).toFixed(2) + '%',
+    description: `UR × (1 - URF) = ${((A.aef.UR || 0) * 100).toFixed(2)}% × ${(1 - (A.aef.URF || 0)).toFixed(3)}`
+  });
+
+  // Tax Components
+  rows.push({ component: '<strong>Tax Components</strong>', value: '', description: '' });
+
+  rows.push({
+    component: 'Federal Tax (TLF)',
+    value: ((A.aef.TLF || 0) * 100).toFixed(2) + '%',
+    description: 'Federal income tax rate'
+  });
+
+  rows.push({
+    component: 'State Tax (TLS)',
+    value: ((A.aef.TLS || 0) * 100).toFixed(2) + '%',
+    description: 'State income tax rate'
+  });
+
+  rows.push({
+    component: 'Combined Tax (Simple Add)',
+    value: ((A.aef.tlCombined || 0) * 100).toFixed(2) + '%',
+    description: 'TLF + TLS (for reference only)'
+  });
+
+  rows.push({
+    component: 'Effective Tax Rate',
+    value: ((A.aef.tlEff || 0) * 100).toFixed(2) + '%',
+    description: `1 - (1 - TLF) × (1 - TLS) = Multiplicative method`
+  });
+
+  // Wrongful Death Components (if applicable)
+  if (isWD) {
+    rows.push({ component: '<strong>Wrongful Death Components</strong>', value: '', description: '' });
+
+    rows.push({
+      component: 'Personal Consumption (PC)',
+      value: ((A.aef.PC || 0) * 100).toFixed(2) + '%',
+      description: 'Decedent\'s personal consumption'
+    });
+
+    rows.push({
+      component: 'Personal Maintenance (PM)',
+      value: ((A.aef.PM || 0) * 100).toFixed(2) + '%',
+      description: 'Decedent\'s personal maintenance'
+    });
+  }
+
+  // Fringe Benefit Load (built into AEF)
+  rows.push({ component: '<strong>Fringe Benefit Load</strong>', value: '', description: '' });
+
+  const fringePct = A.aef.fringePct || 0;
+  rows.push({
+    component: 'Fringe Benefit %',
+    value: (fringePct * 100).toFixed(2) + '%',
+    description: 'Fringe benefits as % of wages'
+  });
+
+  rows.push({
+    component: 'Fringe Load Factor',
+    value: (1 + fringePct).toFixed(5),
+    description: '(1 + Fringe %) - multiplier applied in AEF'
+  });
+
+  // Final AEF Calculation
+  rows.push({ component: '<strong>Adjusted Earnings Factor (AEF)</strong>', value: '', description: '' });
+
+  let formula = 'GE × WLE × (1 - UF) × (1 - TR) × (1 + FB)';
+  if (isWD) {
+    formula += ' × (1 - PC) × (1 - PM)';
+  }
+
+  rows.push({
+    component: 'AEF Factor',
+    value: aefOn ? (A.aef.factor || 1).toFixed(5) : '1.00000 (OFF)',
+    description: 'WLE × (1 - UF) × (1 - TR) × (1 + FB)' + (isWD ? ' × (1 - PC) × (1 - PM)' : '')
+  });
+
+  rows.push({
+    component: 'AEF (Adjusted Annual Earnings)',
+    value: aefOn ? ('$' + (A.aef.value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })) : 'N/A (OFF)',
+    description: formula
+  });
+
+  rows.push({
+    component: 'AEF Applied To',
+    value: aefOn ? 'Gross Wages' : 'N/A',
+    description: aefOn ? 'Result = Wages × AEF (includes wage + fringe adjustment)' : 'AEF is turned off'
+  });
+
+  rows.push({
+    component: 'Fringe Treatment',
+    value: aefOn ? 'Built into AEF' : 'Added separately',
+    description: aefOn ? 'Fringe benefits included via (1 + FB) multiplier in AEF' : 'Fringes calculated and added separately when AEF is off'
+  });
+
+  // Build table rows
+  rows.forEach(row => {
+    const tr = document.createElement('tr');
+    tr.style.borderBottom = '1px solid var(--border)';
+
+    // Component cell
+    const tdComp = document.createElement('td');
+    tdComp.style.padding = '8px 10px';
+    tdComp.style.textAlign = 'left';
+    tdComp.innerHTML = row.component;
+    if (row.component.includes('<strong>')) {
+      tdComp.style.background = 'var(--panel-2)';
+      tdComp.style.fontWeight = '600';
+      tdComp.style.color = 'var(--accent)';
+    }
+    tr.appendChild(tdComp);
+
+    // Value cell
+    const tdVal = document.createElement('td');
+    tdVal.style.padding = '8px 10px';
+    tdVal.style.textAlign = 'right';
+    tdVal.style.fontFamily = 'monospace';
+    tdVal.textContent = row.value;
+    if (row.component.includes('<strong>')) {
+      tdVal.style.background = 'var(--panel-2)';
+    }
+    tr.appendChild(tdVal);
+
+    // Description cell
+    const tdDesc = document.createElement('td');
+    tdDesc.style.padding = '8px 10px';
+    tdDesc.style.textAlign = 'left';
+    tdDesc.style.color = 'var(--muted)';
+    tdDesc.style.fontSize = '12px';
+    tdDesc.textContent = row.description;
+    if (row.component.includes('<strong>')) {
+      tdDesc.style.background = 'var(--panel-2)';
+    }
+    tr.appendChild(tdDesc);
+
+    tbody.appendChild(tr);
+  });
+}
+
+// AEF conflict handling
+function toggleAEFUI(){
+  const aefMode = ui.aefMode.value;
+  const fringeAEFMode = ui.fringeAEFMode.value;
+
+  // If AEF is off, fringe AEF should also be effectively off
+  if (aefMode === 'off') {
+    // Disable fringe AEF selector and force to 'none'
+    ui.fringeAEFMode.disabled = true;
+    if (fringeAEFMode !== 'none') {
+      ui.fringeAEFMode.value = 'none';
+    }
+    // Dim the AEF input fields
+    ui.aefUR.disabled = true;
+    ui.aefURF.disabled = true;
+    ui.aefTLF.disabled = true;
+    ui.aefTLS.disabled = true;
+    if (ui.aefPC) ui.aefPC.disabled = true;
+    if (ui.aefPM) ui.aefPM.disabled = true;
+  } else {
+    // AEF is on - enable everything
+    ui.fringeAEFMode.disabled = false;
+    ui.aefUR.disabled = false;
+    ui.aefURF.disabled = false;
+    ui.aefTLF.disabled = false;
+    ui.aefTLS.disabled = false;
+    if (ui.aefPC) ui.aefPC.disabled = false;
+    if (ui.aefPM) ui.aefPM.disabled = false;
+  }
+}
+
+ui.aefMode.addEventListener('change', () => {
+  toggleAEFUI();
+  buildAssumptions(); // Recalculate AEF values
+});
+
+ui.fringeAEFMode.addEventListener('change', () => {
+  buildAssumptions(); // Recalculate fringe AEF value
+});
+
+// Comprehensive conflict resolution - called on any significant change
+function resolveAllConflicts(){
+  toggleGrowthUI();
+  toggleFringeUI();
+  toggleDiscUI();
+  toggleAEFUI();
+
+  // Case type specific toggles
+  const caseType = ui.caseType.value;
+  document.querySelectorAll('.wd-only').forEach(el=> el.style.display = (caseType==='wd') ? '' : 'none');
+}
+
+// Listen for case type changes
+ui.caseType.addEventListener('change', () => {
+  resolveAllConflicts();
+  buildAssumptions(); // Recalculate to update PC/PM visibility
+});
+
+function restoreUI(A){
+  if(A.meta){
+    ui.profileName.value = A.meta.profileName||'';
+    ui.caseName.value = A.meta.caseName||'';
+    ui.caseType.value = A.meta.caseType||'pi';
+    ui.wageSourceNotes.value = A.meta.wageSourceNotes||'';
+    ui.benefitSourceNotes.value = A.meta.benefitSourceNotes||'';
+  }
+  if(A.dates){ ui.dob.value = A.dates.dob||''; ui.valuationDate.value = A.dates.valuation||''; ui.incidentDate.value = A.dates.incident||''; }
+  if(A.horizon){ ui.wleYears.value = A.horizon.wleYears||''; ui.yfsYears.value = A.horizon.yfsYears||''; ui.leYears.value = A.horizon.leYears||''; ui.pjiYears.value = A.horizon.pjiYears||''; }
+  const inferredApplySurvival = (A.lifeTable && 'applySurvival' in A.lifeTable)
+    ? A.lifeTable.applySurvival !== false
+    : (A.options ? A.options.applySurvival !== false : true);
+  if(A.lifeTable){
+    ui.lifeTablePopulation.value = A.lifeTable.population || 'combined';
+    ui.lifeTableSource.value = A.lifeTable.source || 'CDC United States Life Tables, 2023 (NVSR 73-15)';
+  } else {
+    ui.lifeTablePopulation.value = 'combined';
+    ui.lifeTableSource.value = 'CDC United States Life Tables, 2023 (NVSR 73-15)';
+  }
+  ui.applySurvival.checked = inferredApplySurvival;
+  if(A.butFor){
+    ui.bfBase.value = A.butFor.baseAnnual||'';
+    ui.bfFringePct.value = (A.aef?.fringePct !== undefined ? A.aef.fringePct : (A.butFor.fringePct||0))*100;
+    ui.fringeMethod.value = A.butFor.fringeMethod||'simple';
+    ui.bfGrowthMethod.value = A.butFor.growthMethod||'fixed';
+    ui.bfGrowth.value = (A.butFor.growth||0)*100;
+    ui.bfGrowthSeries.value = (A.butFor.growthSeries||[]).map(x=>x*100).join(',');
+  }
+  if(A.upsFringe){
+    ui.upsEmploymentType.value = A.upsFringe.employmentType||'fulltime';
+    ui.upsJobClass.value = A.upsFringe.jobClass||'driver';
+    ui.upsWeeklyIncrease.value = A.upsFringe.weeklyIncrease||40;
+    ui.upsWeeklyBaseTotal.value = A.upsFringe.weeklyBaseTotal || '';
+    ui.upsHWPerHour.value = A.upsFringe.hwPerHour||0.50;
+    ui.upsPensionAccrual.value = A.upsFringe.pensionAccrual||65;
+    ui.upsMaxServiceYears.value = A.upsFringe.maxServiceYears||35;
+    const upsGrowth = (A.upsFringe.fringeGrowth !== undefined) ? A.upsFringe.fringeGrowth : 0.06;
+    ui.upsFringeGrowth.value = upsGrowth*100;
+    // If UPS fringe is selected, pre-fill fringe % from UPS inputs for visibility
+    if((A.butFor?.fringeMethod || ui.fringeMethodSel.value) === 'ups'){
+      deriveUpsFringePctFromUi();
+    }
+  }
+  if(A.legalBenefits){
+    ui.oasdiRate.value = (A.legalBenefits.oasdiRate ?? 0.062)*100;
+    ui.oasdiBase.value = A.legalBenefits.oasdiBase ?? 176100;
+    ui.medicareRate.value = (A.legalBenefits.medicareRate ?? 0.0145)*100;
+    ui.futaRate.value = (A.legalBenefits.futaRate ?? 0.006)*100;
+    ui.futaBase.value = A.legalBenefits.futaBase ?? 7000;
+    ui.sutaRate.value = (A.legalBenefits.sutaRate ?? 0.027)*100;
+    ui.sutaBase.value = A.legalBenefits.sutaBase ?? 24000;
+    ui.workersCompRate.value = (A.legalBenefits.workersCompRate ?? 0.012)*100;
+    ui.applyLegalsToActual.checked = A.legalBenefits.applyToActual !== false;
+  } else {
+    ui.oasdiRate.value = 6.2;
+    ui.oasdiBase.value = 176100;
+    ui.medicareRate.value = 1.45;
+    ui.futaRate.value = 0.6;
+    ui.futaBase.value = 7000;
+    ui.sutaRate.value = 2.7;
+    ui.sutaBase.value = 24000;
+    ui.workersCompRate.value = 1.2;
+    ui.applyLegalsToActual.checked = true;
+  }
+  if(A.aef){
+    ui.aefMode.value = A.aef.mode||'off';
+    ui.fringeAEFMode.value = A.aef.fringeMode||'partial';
+    ui.aefUR.value = (A.aef.UR||0)*100;
+    ui.aefURF.value = (A.aef.URF||0)*100;
+    ui.aefTLF.value = (A.aef.TLF||0)*100;
+    ui.aefTLS.value = (A.aef.TLS||0)*100;
+    ui.aefFringePct.value = (A.aef.fringePct !== undefined ? A.aef.fringePct : (A.butFor?.fringePct || 0))*100;
+    if(ui.aefPC) ui.aefPC.value = (A.aef.PC||0)*100;
+    if(ui.aefPM) ui.aefPM.value = (A.aef.PM||0)*100;
+  }
+  if(A.actual){ ui.actStart.value = A.actual.start||''; ui.actAnnual.value = A.actual.annual||''; ui.actGrowth.value = (A.actual.growth||0)*100; ui.actFringePct.value = (A.actual.fringePct||0)*100; }
+  if(A.discount){ ui.discMethod.value = A.discount.method||'ndr'; ui.ndr.value = (A.discount.ndr||0)*100; ui.discRate.value = (A.discount.rate||0)*100; ui.discGrowth.value = (A.discount.growth||0)*100; }
+  if(A.options){
+    ui.roundDisplay.checked = (A.options.roundAtDisplay !== false);
+    ui.includeAEF.checked = (A.options.includeAEF !== false);
+    ui.includeLegals.checked = (A.options.includeLegals !== false);
+    ui.includeBFFringe.checked = (A.options.includeBFFringe !== false);
+    ui.includeMitigation.checked = (A.options.includeMitigation !== false);
+    ui.includeActualFringe.checked = (A.options.includeActualFringe !== false);
+    ui.includeDiscounting.checked = (A.options.includeDiscounting !== false);
+  }
+  if(A.manualOverrides){ manualEarningsOverrides = A.manualOverrides || {}; }
+  resolveAllConflicts(); // Ensure all UI states are consistent after restore
+}
+
+function buildAssumptions(){
+  const A = {
+    meta: {
+      profileName: ui.profileName.value || '',
+      caseName: ui.caseName.value || '',
+      generatedAt: new Date().toISOString(),
+      caseType: ui.caseType.value,
+      wageSourceNotes: ui.wageSourceNotes.value || '',
+      benefitSourceNotes: ui.benefitSourceNotes.value || ''
+    },
+    dates: { valuation: ui.valuationDate.value, incident: ui.incidentDate.value, dob: ui.dob.value },
+    horizon: { wleYears: Number(ui.wleYears.value||0), yfsYears: Number(ui.yfsYears.value||0), leYears: Number(ui.leYears.value||0), pjiYears: Number(ui.pjiYears.value||0) },
+    lifeTable: {
+      applySurvival: ui.applySurvival.checked,
+      population: ui.lifeTablePopulation.value || 'combined',
+      source: ui.lifeTableSource.value || 'CDC United States Life Tables, 2023 (NVSR 73-15)'
+    },
+    butFor: {
+      baseAnnual: Number(ui.bfBase.value||0),
+      fringePct: Number(ui.aefFringePct.value||0)/100,
+      fringeMethod: ui.fringeMethod.value,
+      growthMethod: ui.bfGrowthMethod.value,
+      growth: Number(ui.bfGrowth.value||0)/100,
+      growthSeries: (ui.bfGrowthSeries.value||'').split(',').map(s=>Number(s.trim())/100).filter(n=>!isNaN(n) && isFinite(n))
+    },
+    upsFringe: {
+      employmentType: ui.upsEmploymentType.value,
+      jobClass: ui.upsJobClass.value,
+      weeklyIncrease: Number(ui.upsWeeklyIncrease.value||40),
+      hwPerHour: Number(ui.upsHWPerHour.value||0.50),
+      pensionAccrual: Number(ui.upsPensionAccrual.value||65),
+      maxServiceYears: Number(ui.upsMaxServiceYears.value||35),
+      fringeGrowth: Number(ui.upsFringeGrowth.value||0)/100
+    },
+    legalBenefits: {
+      oasdiRate: Number(ui.oasdiRate.value||0)/100,
+      oasdiBase: Number(ui.oasdiBase.value||0),
+      medicareRate: Number(ui.medicareRate.value||0)/100,
+      futaRate: Number(ui.futaRate.value||0)/100,
+      futaBase: Number(ui.futaBase.value||0),
+      sutaRate: Number(ui.sutaRate.value||0)/100,
+      sutaBase: Number(ui.sutaBase.value||0),
+      workersCompRate: Number(ui.workersCompRate.value||0)/100,
+      applyToActual: ui.applyLegalsToActual.checked
+    },
+    aef: { mode: ui.aefMode.value, fringeMode: ui.fringeAEFMode.value, UR: Number(ui.aefUR.value||0)/100, URF: Number(ui.aefURF.value||0)/100, TLF: Number(ui.aefTLF.value||0)/100, TLS: Number(ui.aefTLS.value||0)/100, fringePct: Number(ui.aefFringePct.value||0)/100, PC: Number(ui.aefPC?.value||0)/100, PM: Number(ui.aefPM?.value||0)/100 },
+    actual: { start: ui.actStart.value, annual: Number(ui.actAnnual.value||0), growth: Number(ui.actGrowth.value||0)/100, fringePct: Number(ui.actFringePct.value||0)/100 },
+    discount: { method: ui.discMethod.value, ndr: Number(ui.ndr.value||0)/100, rate: Number(ui.discRate.value||0)/100, growth: Number(ui.discGrowth.value||0)/100 },
+    options: {
+      roundAtDisplay: ui.roundDisplay.checked,
+      applySurvival: ui.applySurvival.checked,
+      includeAEF: ui.includeAEF.checked,
+      includeLegals: ui.includeLegals.checked,
+      includeBFFringe: ui.includeBFFringe.checked,
+      includeMitigation: ui.includeMitigation.checked,
+      includeActualFringe: ui.includeActualFringe.checked,
+      includeDiscounting: ui.includeDiscounting.checked
+    },
+    manualOverrides: manualEarningsOverrides
+  };
+
+  // If UPS fringe is selected, derive fringe % from UPS benefits automatically
+  const upsFringePct = computeUPSFringePctPreview(A);
+  if (upsFringePct !== null) {
+    A.aef.fringePct = upsFringePct;
+    A.butFor.fringePct = upsFringePct;
+    const pct100 = (upsFringePct*100).toFixed(2);
+    ui.aefFringePct.value = pct100;
+    ui.bfFringePct.value = pct100;
+  }
+
+  const vDate = new Date(A.dates.valuation); const iDate = new Date(A.dates.incident); const dob = new Date(A.dates.dob);
+  if (iDate instanceof Date && !isNaN(iDate) && A.horizon.wleYears>0){ const retire = addYears(iDate, A.horizon.wleYears); ui.retireDate.value = fmtDate(retire); A.dates.retire = retire.toISOString(); }
+  else if (vDate instanceof Date && !isNaN(vDate) && A.horizon.wleYears>0){ const retire = addYears(vDate, A.horizon.wleYears); ui.retireDate.value = fmtDate(retire); A.dates.retire = retire.toISOString(); }
+  else { ui.retireDate.value = '-'; A.dates.retire = ''; }
+  if (iDate instanceof Date && !isNaN(iDate) && A.horizon.pjiYears>0){ const pjiRetire = addYears(iDate, A.horizon.pjiYears); ui.pjiRetireDate.value = fmtDate(pjiRetire); A.dates.pjiRetire = pjiRetire.toISOString(); } else { ui.pjiRetireDate.value = '-'; A.dates.pjiRetire = ''; }
+  if (dob instanceof Date && !isNaN(dob) && A.horizon.leYears>0){ const leDate = addYears(dob, A.horizon.leYears); A.dates.leDate = leDate.toISOString(); } else { A.dates.leDate = ''; }
+
+  // Get Gross Earnings Base (GE) - the base but-for salary
+  // Use baseAnnual as the canonical input; fall back to legacy salary if present
+  const GE = Number.isFinite(A.butFor.baseAnnual) ? A.butFor.baseAnnual : (A.butFor.salary || 0);
+  const includeBFFringe = !A.options || A.options.includeBFFringe !== false;
+
+  // WLE - Worklife Adjusted Earnings Base (ratio)
+  const wle = (A.horizon.yfsYears>0 && A.horizon.wleYears>0) ? (A.horizon.wleYears / A.horizon.yfsYears) : 1;
+
+  // UF - Unemployment Factor (effective rate after reimbursement)
+  const ufEff = (A.aef.UR||0) * (1 - (A.aef.URF||0));
+
+  // TR - Combined Effective Tax Rate (additive method)
+  const tlEff = 1 - (1 - (A.aef.TLF||0)) * (1 - (A.aef.TLS||0));
+  const tlCombined = (A.aef.TLF||0) + (A.aef.TLS||0);
+  ui.aefTLCombined.value = isFinite(tlCombined) ? tlCombined.toFixed(5) : '';
+
+  // PC and PM for wrongful death cases
+  const pc = (A.meta.caseType==='wd') ? (A.aef.PC||0) : 0;
+  const pm = (A.meta.caseType==='wd') ? (A.aef.PM||0) : 0;
+
+  // FB - Fringe Benefits Loading (percentage)
+  const fringePctInput = (A.aef.fringePct !== undefined) ? A.aef.fringePct : (A.butFor.fringePct || 0);
+  const fringePct = fringePctInput;
+
+  // AEF Formula: GE × WLE × (1 – UF) × (1 – TR) × (1 + FB) × (1 - PC) × (1 - PM)
+  // This produces the Adjusted Earnings (dollar amount), not just a factor
+  const aefFactor = wle * (1 - ufEff) * (1 - tlEff) * (1 + fringePct) * (1 - pc) * (1 - pm);
+  const AEF = GE * aefFactor;
+
+  ui.aefWLR.value = (isFinite(wle) ? wle.toFixed(5) : '');
+  ui.aefUFEff.value = (isFinite(ufEff) ? ufEff.toFixed(5) : '');
+  ui.aefTLEff.value = (isFinite(tlEff) ? tlEff.toFixed(5) : '');
+  ui.aefValue.value = (isFinite(AEF) ? '$' + AEF.toFixed(2) : '');
+
+  // Store both the dollar amount AEF and the factor
+  A.aef.value = AEF; // Dollar amount for display
+  A.aef.factor = aefFactor; // Factor for applying to schedule
+  A.aef.grossEarningsBase = GE;
+  A.aef.wle = wle;
+  A.aef.ufEff = ufEff;
+  A.aef.tlEff = tlEff;
+  A.aef.tlCombined = tlCombined;
+  A.aef.fringePct = fringePct;
+
+  // Fringe AEF is now BUILT INTO the main AEF
+  // We still store a separate value for display purposes
+  const fringeMode = A.aef.fringeMode || 'partial';
+  let fringeAEF = 1.0;
+  if (fringeMode === 'none') {
+    fringeAEF = 1.0;
+  } else if (fringeMode === 'partial') {
+    fringeAEF = wle * (1 - ufEff);
+    if (A.meta.caseType === 'wd') {
+      fringeAEF = fringeAEF * (1 - pc) * (1 - pm);
+    }
+  } else if (fringeMode === 'full') {
+    // For display - show what it would be if fringes got full treatment
+    fringeAEF = wle * (1 - ufEff) * (1 - tlEff) * (1 - pc) * (1 - pm);
+  }
+  ui.fringeAEFValue.value = (isFinite(fringeAEF) ? fringeAEF.toFixed(5) : '');
+  A.aef.fringeValue = fringeAEF;
+
+  document.querySelectorAll('.wd-only').forEach(el=> el.style.display = (A.meta.caseType==='wd') ? '' : 'none');
+  return A;
+}
+
+function bfGrowthForYear(A, idx, year){
+  if (A.butFor.growthMethod==='ups') {
+    // Use UPS contract rates
+    return getUPSWageGrowthForYear(year);
+  }
+  if (A.butFor.growthMethod==='series') {
+    return A.butFor.growthSeries[idx] ?? (A.butFor.growthSeries.length ? A.butFor.growthSeries[A.butFor.growthSeries.length-1] : 0);
+  }
+  return A.butFor.growth;
+}
+
+// Calculate UPS-specific fringe benefits (H&W + Pension contributions)
+function calculateUPSFringe(A, year, yearPortion, hoursWorked) {
+  const contract = getUPSContractForYear(year);
+  const isFullTime = A.upsFringe.employmentType === 'fulltime';
+
+  // Baseline weekly total if provided (e.g., $2,610/year ≈ $50/week)
+  const weeklyBaseTotal = Number(A.upsFringe.weeklyBaseTotal || 0);
+  let baseAnnual = 0;
+  if (weeklyBaseTotal > 0) {
+    baseAnnual = weeklyBaseTotal * 52 * yearPortion;
+  }
+
+  // Health & Welfare contribution (per hour)
+  let hwPerHour = A.upsFringe.hwPerHour || 0.50;
+  if (!isFullTime && year >= 2018 && year < 2021) {
+    hwPerHour = 0.30; // Part-time 2018-2020
+  }
+  let hwAnnual = hwPerHour * hoursWorked * yearPortion;
+
+  // Pension contribution (weekly increase minus H&W)
+  // Weekly increase is $40, H&W takes $0.50/hr (≈ $20/week for 40hr week)
+  // Remainder goes to pension
+  const weeklyPensionContribution = (A.upsFringe.weeklyIncrease || 40) - (hwPerHour * 40);
+  let pensionAnnual = (weeklyPensionContribution * 52) * yearPortion;
+
+  // Add baseline total (if provided) to H&W/Pension split proportionally
+  if (baseAnnual > 0) {
+    // Assume baseline splits proportionally to current calculated HW vs Pension
+    const calcTotal = hwAnnual + pensionAnnual || 1;
+    const hwShare = hwAnnual / calcTotal;
+    const penShare = pensionAnnual / calcTotal;
+    hwAnnual += baseAnnual * hwShare;
+    pensionAnnual += baseAnnual * penShare;
+  }
+
+  // Apply compound growth and cumulative weekly increases after incident
+  const fringeGrowth = A.upsFringe.fringeGrowth || 0;
+  let yearsSinceIncident = 0;
+  if (A.dates.incident) {
+    const incidentYear = new Date(A.dates.incident).getUTCFullYear();
+    yearsSinceIncident = Math.max(0, year - incidentYear);
+  }
+  if (yearsSinceIncident > 0) {
+    // Add cumulative weekly increase for years since incident
+    const weeklyInc = A.upsFringe.weeklyIncrease || 0;
+    const incAnnual = weeklyInc * 52 * yearsSinceIncident * yearPortion;
+    const incShare = (hwAnnual + pensionAnnual) || 1;
+    const hwRatio = hwAnnual / incShare;
+    const penRatio = pensionAnnual / incShare;
+    hwAnnual += incAnnual * hwRatio;
+    pensionAnnual += incAnnual * penRatio;
+  }
+  if (fringeGrowth > 0 && yearsSinceIncident > 0) {
+    const growthFactor = Math.pow(1 + fringeGrowth, yearsSinceIncident);
+    hwAnnual = hwAnnual * growthFactor;
+    pensionAnnual = pensionAnnual * growthFactor;
+  }
+
+  return {
+    hw: hwAnnual,
+    pension: pensionAnnual,
+    total: hwAnnual + pensionAnnual
+  };
+}
+
+function calculateLegallyRequiredBenefits(amount, legal){
+  if (!legal) return 0;
+  const wages = Math.max(0, amount);
+  const oasdiBase = legal.oasdiBase ?? 0;
+  const futaBase = legal.futaBase ?? 0;
+  const sutaBase = legal.sutaBase ?? 0;
+  const oasdi = Math.min(wages, oasdiBase || wages) * (legal.oasdiRate ?? 0);
+  const medicare = wages * (legal.medicareRate ?? 0);
+  const futa = Math.min(wages, futaBase || wages) * (legal.futaRate ?? 0);
+  const suta = Math.min(wages, sutaBase || wages) * (legal.sutaRate ?? 0);
+  const workersComp = wages * (legal.workersCompRate ?? 0);
+  return oasdi + medicare + futa + suta + workersComp;
+}
+
+function scheduleFromAssumptions(A){
+  const vDate = new Date(A.dates.valuation); const iDate = new Date(A.dates.incident); const eDate = A.dates.retire ? new Date(A.dates.retire) : null; const dob = new Date(A.dates.dob);
+  if (!(vDate instanceof Date) || isNaN(vDate)) throw new Error('Report date is required');
+  if (!(iDate instanceof Date) || isNaN(iDate)) throw new Error('Incident date is required');
+  if (!(dob instanceof Date) || isNaN(dob)) throw new Error('Date of birth is required');
+  const endDate = eDate || vDate;
+
+  const startYear = iDate.getUTCFullYear(); const endYear = endDate.getUTCFullYear();
+  let rows = []; let rowsPre = []; let rowsPost = [];
+  let bfAnnual = A.butFor.baseAnnual; let actAnnual = A.actual.annual;
+  let pastDam = 0, futurePV = 0;
+  const includeLegals = !A.options || A.options.includeLegals !== false;
+
+  for (let y = startYear, idx = 0; y <= endYear; y++, idx++){
+    try {
+      if (idx>0) { bfAnnual = bfAnnual * (1 + bfGrowthForYear(A, idx-1, y)); actAnnual = actAnnual * (1 + A.actual.growth); }
+      const yStart = new Date(Date.UTC(y,0,1)); const yMid = new Date(Date.UTC(y,6,1)); const yEnd = new Date(Date.UTC(y,11,31));
+
+      let yearPortion = 1; if (y===startYear){ const start = iDate>yStart ? iDate : yStart; yearPortion = yearFrac(start, yEnd); }
+      if (y===endYear){ const end = endDate<yEnd ? endDate : yEnd; yearPortion = yearFrac(yStart, end); }
+      if (yearPortion<0) yearPortion = 0;
+
+      const age = yearFrac(dob, yMid);
+      const bfGross = bfAnnual * yearPortion;
+
+      // Calculate fringe benefits for display purposes
+      let bfFringeGross = 0, bfHW = 0, bfPension = 0;
+      if (A.options.includeBFFringe) {
+        if (A.butFor.fringeMethod === 'ups') {
+          // UPS-specific calculation
+          const hoursPerYear = 2080; // Standard full-time hours
+          const upsFringe = calculateUPSFringe(A, y, yearPortion, hoursPerYear);
+          bfHW = upsFringe.hw;
+          bfPension = upsFringe.pension;
+          bfFringeGross = upsFringe.total;
+        } else {
+          // Simple percentage method
+          bfFringeGross = (bfGross * (A.butFor.fringePct||0));
+        }
+      }
+
+      // AEF Method: AEF = GE × WLE × (1 – UF) × (1 – TR) × (1 + FB)
+      // The factor WLE × (1 – UF) × (1 – TR) × (1 + FB) is applied to gross wages
+      // This result already includes the fringe benefit adjustment
+      let bfAdj = bfGross;
+      let bfFringe = bfFringeGross;
+      let bfTotal = 0;
+
+      if (A.options.includeAEF && A.aef.mode==='on') {
+        // Apply AEF factor to gross wages - result includes both wage and fringe adjustment
+        bfAdj = bfGross * (A.aef.factor || 1);
+        // Fringes are ALREADY included in bfAdj via the AEF
+        // Set bfFringe to 0 for calculation purposes (it's in the AEF)
+        bfFringe = 0;
+      }
+
+      const bfLegals = includeLegals ? calculateLegallyRequiredBenefits(bfGross, A.legalBenefits) : 0;
+      bfTotal = bfAdj + bfFringe + bfLegals;
+
+      const actStartDate = A.actual.start ? new Date(A.actual.start) : vDate;
+      const periodEnd = (y === endYear && endDate < yEnd) ? endDate : yEnd;
+      let actE = 0, actFringe = 0;
+      if (A.options.includeMitigation && periodEnd > actStartDate) {
+        // Prorate mitigation to the portion of the year after the start date
+        const windowStart = actStartDate > yStart ? actStartDate : yStart;
+        const actPortion = Math.min(yearPortion, Math.max(0, yearFrac(windowStart, periodEnd)));
+        actE = actAnnual * actPortion;
+        if (A.options.includeActualFringe) {
+          actFringe = actE * (A.actual.fringePct||0);
+        }
+      }
+
+      // Check for manual override
+      const override = getManualOverride(y);
+      if (override) {
+        actE = override.actE;
+        if (A.options.includeActualFringe) {
+          actFringe = override.actFringe;
+        }
+      }
+
+      const applyLegalsActual = includeLegals && (!A.legalBenefits || A.legalBenefits.applyToActual !== false);
+      const actLegals = applyLegalsActual ? calculateLegallyRequiredBenefits(actE, A.legalBenefits) : 0;
+      const actualTotal = actE + actFringe + actLegals;
+
+      const loss = Math.max(0, bfTotal - actualTotal);
+      const survivalProb = getSurvivalProbability(age, A);
+
+      const isPastYear = y < vDate.getUTCFullYear(); const isValYear = y === vDate.getUTCFullYear();
+      let pastPart = 0, futurePart = 0;
+      if (isPastYear) { pastPart = loss; }
+      else if (isValYear) { const partPast = Math.max(0, Math.min(1, yearFrac(yStart, vDate))); pastPart = loss * partPast; futurePart = loss - pastPart; }
+      else { futurePart = loss; }
+
+      let survivalWeightedFuture = futurePart;
+      const applySurvival = (A.lifeTable && A.lifeTable.applySurvival !== false) || (A.options && A.options.applySurvival);
+      if (applySurvival && futurePart > 0) {
+        survivalWeightedFuture = futurePart * survivalProb;
+      }
+
+      let pvFuture = 0;
+      if (survivalWeightedFuture > 0) {
+        if (A.options.includeDiscounting) {
+          const yrs = Math.max(0, yearFrac(vDate, yMid));
+          let r = 0;
+          if (A.discount.method === 'ndr') r = A.discount.ndr;
+          else if (A.discount.method === 'real') r = A.discount.rate;
+          else r = A.discount.rate;
+          pvFuture = survivalWeightedFuture / Math.pow(1 + (r || 0), yrs);
+        } else {
+          // No discounting, just use the future value as-is
+          pvFuture = survivalWeightedFuture;
+        }
+      }
+
+      pastDam += pastPart; futurePV += pvFuture;
+
+      const rec = {
+        year: y,
+        age: age.toFixed(2),
+        portion: yearPortion,
+        bfGross,
+        bfAdj,
+        bfFringe,
+        bfHW,
+        bfPension,
+        bfLegals,
+        actE,
+        actFringe,
+        actLegals,
+        survivalProb,
+        loss,
+        pastPart,
+        futurePart,
+        survivalWeightedFuture,
+        pvFuture
+      };
+      rows.push(rec); if (y <= vDate.getUTCFullYear()) rowsPre.push(rec); else rowsPost.push(rec);
+    } catch (error) {
+      // If an error occurs for this year, create an error row
+      const rec = {
+        year: y,
+        error: error.message || 'Calculation error',
+        age: 0,
+        portion: 0,
+        bfGross: 0,
+        bfAdj: 0,
+        bfFringe: 0,
+        bfHW: 0,
+        bfPension: 0,
+        bfLegals: 0,
+        actE: 0,
+        actFringe: 0,
+        actLegals: 0,
+        survivalProb: 0,
+        loss: 0,
+        pastPart: 0,
+        futurePart: 0,
+        survivalWeightedFuture: 0,
+        pvFuture: 0
+      };
+      rows.push(rec); if (y <= vDate.getUTCFullYear()) rowsPre.push(rec); else rowsPost.push(rec);
+    }
+  }
+
+  return { rows, rowsPre, rowsPost, totals: { pastDam, futurePV, totalPV: pastDam + futurePV } };
+}
+
+// Calculate damages at multiple retirement ages (65, 67, 70, and assumed base)
+function calculateRetirementScenarios(A, baseSchedule) {
+  const dob = new Date(A.dates.dob);
+  const vDate = new Date(A.dates.valuation);
+  const currentAge = ageOn(dob, vDate);
+
+  const scenarios = [];
+
+  // Base retirement (current assumption)
+  const wleRetire = A.dates.retire ? new Date(A.dates.retire) : null;
+  const wleRetireAge = wleRetire ? ageOn(dob, wleRetire) : null;
+  if (wleRetire) {
+    const A_wle = JSON.parse(JSON.stringify(A));
+    const S_wle = baseSchedule || scheduleFromAssumptions(A_wle);
+    scenarios.push({
+      name: `Assumed retirement age ${Number(wleRetireAge).toFixed(2)}`,
+      retireAge: wleRetireAge,
+      retireDate: wleRetire,
+      schedule: S_wle,
+      totals: S_wle.totals,
+      assumptions: A_wle
+    });
+  }
+
+  // PJI scenario (years from incident date)
+  const pjiYears = A.horizon.pjiYears;
+  const pjiRetireDate = A.dates.pjiRetire ? new Date(A.dates.pjiRetire) : null;
+  if (pjiYears && pjiYears > 0 && pjiRetireDate) {
+    const pjiRetireAge = ageOn(dob, pjiRetireDate);
+    const iDate = new Date(A.dates.incident);
+    const yearsFromIncident = pjiYears;
+    const yearsFromReport = yearFrac(vDate, pjiRetireDate);
+
+    const A_pji = JSON.parse(JSON.stringify(A));
+    A_pji.dates.retire = pjiRetireDate.toISOString();
+    A_pji.horizon.wleYears = Math.max(0, yearsFromReport);
+    A_pji.horizon.yfsYears = Math.max(0, yearsFromReport);
+    // Ensure discounting is enabled for scenario comparison
+    if (!A_pji.options) A_pji.options = {};
+    A_pji.options.includeDiscounting = true;
+
+    const S_pji = scheduleFromAssumptions(A_pji);
+    scenarios.push({
+      name: `PJI: ${pjiYears} yrs from injury (Age ${Number(pjiRetireAge).toFixed(1)})`,
+      retireAge: pjiRetireAge,
+      retireDate: pjiRetireDate,
+      schedule: S_pji,
+      totals: S_pji.totals,
+      assumptions: A_pji
+    });
+  }
+
+  // Fixed age scenarios: 65, 67, 70
+  [65, 67, 70].forEach(targetAge => {
+    if (targetAge > currentAge) {
+      const yearsToRetire = targetAge - currentAge;
+      const retireDate = addYears(vDate, yearsToRetire);
+
+      const A_temp = JSON.parse(JSON.stringify(A));
+      A_temp.dates.retire = retireDate.toISOString();
+      A_temp.horizon.wleYears = yearsToRetire;
+      // Ensure discounting is enabled for scenario comparison
+      if (!A_temp.options) A_temp.options = {};
+      A_temp.options.includeDiscounting = true;
+
+      const S_temp = scheduleFromAssumptions(A_temp);
+      scenarios.push({
+        name: `Age ${targetAge} Retirement`,
+        retireAge: targetAge,
+        retireDate: retireDate,
+        schedule: S_temp,
+        totals: S_temp.totals,
+        assumptions: A_temp
+      });
+    }
+  });
+
+  return scenarios;
+}
+
+function setActiveScenario(index){
+  const scenarios = window.__RETIREMENT__ || [];
+  if (!scenarios.length) {
+    renderTables(window.__ASSUMPTIONS__ || {}, window.__SCHEDULE__ || { rowsPre: [], rowsPost: [] });
+    return;
+  }
+  const clamped = Math.min(Math.max(index ?? 0, 0), scenarios.length - 1);
+  window.__ACTIVE_SCENARIO_INDEX__ = clamped;
+  const scenario = scenarios[clamped];
+  const assumptions = window.__ASSUMPTIONS__ || {};
+  window.__SCHEDULE__ = scenario.schedule;
+  renderTables(assumptions, scenario.schedule);
+  renderSummaryTable(scenario.schedule, assumptions);
+
+  const roundAtDisplay = !!(assumptions.options && assumptions.options.roundAtDisplay);
+  ui.kTotal.textContent = fmt(scenario.totals.totalPV, roundAtDisplay);
+  ui.kPast.textContent = fmt(scenario.totals.pastDam, roundAtDisplay);
+  ui.kFuture.textContent = fmt(scenario.totals.futurePV, roundAtDisplay);
+
+  const activeLabel = $('#activeScenarioLabel');
+  if (activeLabel) {
+    activeLabel.textContent = `Active scenario: ${scenario.name}`;
+  }
+
+  highlightActiveScenarioRow();
+}
+
+function highlightActiveScenarioRow(){
+  const tbody = $('#tableRetirementSummary tbody');
+  if (!tbody) return;
+  const idx = window.__ACTIVE_SCENARIO_INDEX__ ?? 0;
+  Array.from(tbody.children).forEach((tr, rowIdx) => {
+    if (!(tr instanceof HTMLElement)) return;
+    if (rowIdx === idx) {
+      tr.style.backgroundColor = 'var(--panel-2)';
+      tr.style.fontWeight = '600';
+    } else {
+      tr.style.backgroundColor = '';
+      tr.style.fontWeight = '';
+    }
+  });
+}
+
+function runSensitivityAnalysis(baseAssumptions) {
+  const method = baseAssumptions.discount.method;
+  const discountRange = [-0.03, -0.02, -0.01, 0, 0.01, 0.02, 0.03];
+  let growthRange = discountRange.slice();
+  let baseDiscountRate = baseAssumptions.discount.rate;
+  let baseGrowthRate = baseAssumptions.butFor.growth;
+  let growthMode = 'butFor';
+
+  if (method === 'ndr') {
+    baseDiscountRate = baseAssumptions.discount.ndr;
+    baseGrowthRate = 0;
+    growthRange = [0];
+    growthMode = 'disabled';
+  } else if (method === 'real') {
+    baseDiscountRate = baseAssumptions.discount.rate;
+    baseGrowthRate = baseAssumptions.butFor.growthMethod === 'fixed'
+      ? baseAssumptions.butFor.growth
+      : 0;
+  } else {
+    baseDiscountRate = baseAssumptions.discount.rate;
+    if (baseAssumptions.butFor.growthMethod !== 'fixed') {
+      growthMode = 'disabled';
+      growthRange = [0];
+    }
+  }
+
+  const results = [];
+
+  discountRange.forEach(discDelta => {
+    const row = [];
+    const newDiscRate = baseDiscountRate + discDelta;
+
+    growthRange.forEach(growthDelta => {
+      const testA = JSON.parse(JSON.stringify(baseAssumptions));
+      const newGrowthRate = baseGrowthRate + growthDelta;
+
+      if (method === 'ndr') {
+        testA.discount.ndr = newDiscRate;
+      } else {
+        testA.discount.rate = newDiscRate;
+      }
+
+      if (growthMode === 'butFor') {
+        testA.butFor.growth = newGrowthRate;
+        // Force fixed growth method for sensitivity analysis to ensure growth rate is applied
+        testA.butFor.growthMethod = 'fixed';
+      } else if (growthMode === 'discount') {
+        testA.discount.growth = newGrowthRate;
+      }
+
+      // Force discounting to be enabled for sensitivity analysis
+      if (!testA.options) testA.options = {};
+      testA.options.includeDiscounting = true;
+
+      try {
+        const S = scheduleFromAssumptions(testA);
+        row.push({
+          discRate: newDiscRate,
+          growthRate: newGrowthRate,
+          pastDam: S.totals.pastDam,
+          futurePV: S.totals.futurePV,
+          totalPV: S.totals.totalPV,
+          schedule: S,
+          assumptions: testA
+        });
+      } catch (e) {
+        row.push({
+          discRate: newDiscRate,
+          growthRate: newGrowthRate,
+          error: true,
+          pastDam: 0,
+          futurePV: 0,
+          totalPV: 0,
+          schedule: null,
+          assumptions: null
+        });
+      }
+    });
+
+    results.push(row);
+  });
+
+  return {
+    method,
+    baseDiscountRate,
+    baseGrowthRate,
+    discountRange,
+    growthRange,
+    growthMode,
+    results
+  };
+}
+
+function renderTables(A, S){
+  const roundAtDisplay = !!A.options.roundAtDisplay;
+  const isUPS = A.butFor.fringeMethod === 'ups';
+  const aefOn = A.options.includeAEF && A.aef.mode === 'on';
+  const includeLegals = !A.options || A.options.includeLegals !== false;
+  const includeDiscounting = A.options?.includeDiscounting !== false;
+  const showFringe = !aefOn;
+
+  // Adjust headers based on fringe method and AEF
+  let headers = ['Year','Age','Portion','But-For Wages','But-For Adj.'];
+
+  // Only show fringe columns if AEF is OFF (when ON, fringes are in the AEF)
+  if (showFringe) {
+    if (isUPS) {
+      headers.push('H&W', 'Pension', 'Fringe Total');
+    } else {
+      headers.push('Fringe');
+    }
+  }
+
+  if (includeLegals) {
+    headers.push('BF Legally Req');
+  }
+  headers.push('Actual Wages','Actual Fringe');
+  if (includeLegals) {
+    headers.push('ACT Legally Req');
+  }
+  headers.push('Loss','Past');
+  if (includeDiscounting) {
+    headers.push('Future (Raw)','Future (Survival)','PV Future','Survival Prob');
+  } else {
+    headers.push('Future (Nominal)');
+  }
+
+  const colIdx = {
+    loss: headers.indexOf('Loss'),
+    past: headers.indexOf('Past'),
+    futureRaw: headers.indexOf('Future (Raw)'),
+    futureSurv: headers.indexOf('Future (Survival)'),
+    pvFuture: headers.indexOf('PV Future'),
+    futureNominal: headers.indexOf('Future (Nominal)')
+  };
+
+  function build(tableEl, rows){
+    tableEl.innerHTML = '';
+    const thead = document.createElement('thead'); const trh = document.createElement('tr');
+    headers.forEach(h=>{ const th=document.createElement('th'); th.textContent=h; trh.appendChild(th); }); thead.appendChild(trh); tableEl.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    rows.forEach(r=>{
+      const tr = document.createElement('tr');
+
+      // Check if this is an error row
+      if (r.error) {
+        const td = document.createElement('td');
+        td.colSpan = headers.length;
+        td.textContent = `Year ${r.year}: ${r.error}`;
+        td.style.color = 'var(--danger)';
+        td.style.fontWeight = 'bold';
+        td.style.textAlign = 'center';
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+        return;
+      }
+
+      let cells = [ r.year, r.age, r.portion.toFixed(3), fmt(r.bfGross, roundAtDisplay), fmt(r.bfAdj, roundAtDisplay) ];
+
+      // Only add fringe columns if AEF is OFF
+      if (showFringe) {
+        if (isUPS) {
+          cells.push(fmt(r.bfHW || 0, roundAtDisplay), fmt(r.bfPension || 0, roundAtDisplay), fmt(r.bfFringe, roundAtDisplay));
+        } else {
+          cells.push(fmt(r.bfFringe, roundAtDisplay));
+        }
+      }
+
+      if (includeLegals) {
+        cells.push(fmt(r.bfLegals || 0, roundAtDisplay));
+      }
+
+      cells.push(fmt(r.actE, roundAtDisplay), fmt(r.actFringe, roundAtDisplay));
+      if (includeLegals) {
+        cells.push(fmt(r.actLegals || 0, roundAtDisplay));
+      }
+      cells.push(fmt(r.loss, roundAtDisplay), fmt(r.pastPart, roundAtDisplay));
+      if (includeDiscounting) {
+        cells.push(
+          fmt(r.futurePart, roundAtDisplay),
+          fmt(r.survivalWeightedFuture ?? r.futurePart, roundAtDisplay),
+          fmt(r.pvFuture, roundAtDisplay),
+          (r.survivalProb ?? 1).toFixed(3)
+        );
+      } else {
+        cells.push(fmt(r.futurePart, roundAtDisplay));
+      }
+
+      // Determine ACT Earn and ACT Fringe column indices - adjust based on AEF and fringe display
+      const actEarnIdx = headers.indexOf('Actual Wages');
+      const actFringeIdx = headers.indexOf('Actual Fringe');
+
+      cells.forEach((c, idx) => {
+        const td = document.createElement('td');
+        const isActEarn = idx === actEarnIdx;
+        const isActFringe = idx === actFringeIdx;
+        const hasOverride = getManualOverride(r.year);
+
+        if (idx === colIdx.loss) td.classList.add('col-loss');
+        if (idx === colIdx.past) td.classList.add('col-past');
+        if (idx === colIdx.futureRaw || idx === colIdx.futureSurv || idx === colIdx.pvFuture || idx === colIdx.futureNominal) td.classList.add('col-future');
+
+        if ((isActEarn || isActFringe) && editModeEnabled) {
+          td.classList.add('editable-cell');
+          if (hasOverride) {
+            td.classList.add('manual-override');
+            td.title = 'Manually edited - click to change';
+          } else {
+            td.title = 'Click to edit';
+          }
+
+          td.textContent = c;
+          td.onclick = () => makeEditable(td, r.year, isActEarn ? 'actE' : 'actFringe', r.actE, r.actFringe);
+        } else {
+          if ((isActEarn || isActFringe) && hasOverride) {
+            td.classList.add('manual-override');
+            td.title = 'Manually edited (enable edit mode to change)';
+          }
+          td.textContent = c;
+        }
+
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    tableEl.appendChild(tbody);
+  }
+  build(ui.table, S.rowsPre); build(ui.tablePost, S.rowsPost);
+}
+
+function renderSensitivityTable(SA, A) {
+  const table = $('#tableSensitivity');
+  if (!table) return;
+  const includeDiscounting = A.options?.includeDiscounting !== false;
+
+  if (!includeDiscounting) {
+    table.innerHTML = '<p style="padding:8px;font-style:italic;">Present value discounting is off, so sensitivity to discount rates is hidden.</p>';
+    return;
+  }
+
+  table.innerHTML = '';
+
+  const thead = document.createElement('thead');
+  const trh = document.createElement('tr');
+
+  const method = SA.method;
+  const discountRange = SA.discountRange || SA.range || [];
+  const growthRange = SA.growthRange || SA.range || [];
+  const hasGrowthAxis = (growthRange.length > 1) || (SA.growthMode !== 'disabled');
+
+  // First header cell (top-left corner)
+  const thCorner = document.createElement('th');
+  thCorner.textContent = hasGrowthAxis ? 'Discount ↓ / Growth →' : 'Net discount rate grid';
+  thCorner.style.textAlign = 'left';
+  thCorner.style.background = 'var(--panel)';
+  trh.appendChild(thCorner);
+
+  // Column headers (growth rate variations)
+  growthRange.forEach(delta => {
+    const th = document.createElement('th');
+    if (!hasGrowthAxis) {
+      th.textContent = 'Growth disabled';
+      th.style.fontStyle = 'italic';
+    } else {
+      const pct = ((SA.baseGrowthRate + delta) * 100).toFixed(1);
+      th.textContent = pct + '%';
+    }
+    if (delta === 0 && hasGrowthAxis) {
+      th.style.fontWeight = '700';
+      th.style.background = 'var(--accent)';
+      th.style.color = 'var(--bg)';
+    }
+    trh.appendChild(th);
+  });
+
+  thead.appendChild(trh);
+  table.appendChild(thead);
+
+  // Body rows
+  const tbody = document.createElement('tbody');
+
+  SA.results.forEach((row, rowIdx) => {
+    const tr = document.createElement('tr');
+
+    // Row header (discount rate)
+    const th = document.createElement('th');
+    const discDelta = discountRange[rowIdx] ?? 0;
+    const pct = ((SA.baseDiscountRate + discDelta) * 100).toFixed(1);
+    th.textContent = (method === 'ndr' ? 'Net ' : '') + pct + '%';
+    th.style.textAlign = 'left';
+    th.style.background = 'var(--panel)';
+    if (discDelta === 0) {
+      th.style.fontWeight = '700';
+      th.style.background = 'var(--accent)';
+      th.style.color = 'var(--bg)';
+    }
+    tr.appendChild(th);
+
+    // Data cells
+    row.forEach((cell, colIdx) => {
+      const td = document.createElement('td');
+      td.style.textAlign = 'right';
+
+      if (cell.error) {
+        td.textContent = 'Error';
+        td.style.color = 'var(--danger)';
+      } else {
+        td.textContent = fmt(cell.totalPV, A.options.roundAtDisplay);
+
+        // Highlight base case (0,0)
+        if ((discountRange[rowIdx] ?? 0) === 0 && (growthRange[colIdx] ?? 0) === 0) {
+          td.style.fontWeight = '700';
+          td.style.border = '2px solid var(--accent)';
+          td.style.background = 'var(--panel-2)';
+        }
+
+        // Make cell clickable
+        td.style.cursor = 'pointer';
+        td.title = 'Click to view full year-over-year schedule';
+        td.onclick = () => showScenarioDetail(SA, cell, rowIdx, colIdx);
+
+        // Hover effect
+        td.addEventListener('mouseenter', () => {
+          if (!(SA.range[rowIdx] === 0 && SA.range[colIdx] === 0)) {
+            td.style.background = 'var(--panel-2)';
+          }
+        });
+        td.addEventListener('mouseleave', () => {
+          if (!(SA.range[rowIdx] === 0 && SA.range[colIdx] === 0)) {
+            td.style.background = '';
+          }
+        });
+      }
+
+      tr.appendChild(td);
+    });
+
+    tbody.appendChild(tr);
+  });
+
+  table.appendChild(tbody);
+}
+
+function showScenarioDetail(SA, cellData, rowIdx, colIdx) {
+  if (!cellData.schedule || cellData.error) return;
+  const includeDiscounting = cellData.assumptions?.options?.includeDiscounting !== false;
+  if (!includeDiscounting) {
+    alert('Discounting is off; sensitivity scenarios are not available.');
+    return;
+  }
+
+  const discountRange = SA.discountRange || SA.range || [];
+  const growthRange = SA.growthRange || SA.range || [];
+  const discRate = ((SA.baseDiscountRate + (discountRange[rowIdx] ?? 0)) * 100).toFixed(1);
+  const growthRate = ((SA.baseGrowthRate + (growthRange[colIdx] ?? 0)) * 100).toFixed(1);
+
+  // Update title and rates display
+  $('#scenarioTitle').textContent = `Scenario: ${discRate}% Discount, ${growthRate}% Growth`;
+  const futureNominal = (cellData.schedule?.rows || []).reduce((acc,r)=>acc+(r.futurePart||0),0);
+  $('#scenarioRates').innerHTML = `
+    <strong>Total ${includeDiscounting ? 'PV Damages' : 'Nominal Damages'}:</strong> ${fmt(includeDiscounting ? cellData.totalPV : (cellData.pastDam + cellData.futurePV), cellData.assumptions.options.roundAtDisplay)} |
+    <strong>Past:</strong> ${fmt(cellData.pastDam, cellData.assumptions.options.roundAtDisplay)} |
+    <strong>${includeDiscounting ? 'Future PV' : 'Future (Nominal)'}:</strong> ${fmt(includeDiscounting ? cellData.futurePV : futureNominal, cellData.assumptions.options.roundAtDisplay)}
+  `;
+
+  // Build the detailed table
+  const table = $('#tableScenarioDetail');
+  if (!table) return;
+
+  const A = cellData.assumptions;
+  const S = cellData.schedule;
+  const roundAtDisplay = !!A.options.roundAtDisplay;
+  const isUPS = A.butFor.fringeMethod === 'ups';
+  const aefOn = A.options.includeAEF && A.aef.mode === 'on';
+  const showFringe = !aefOn;
+  const includeLegals = !A.options || A.options.includeLegals !== false;
+
+  // Build headers (account for UPS columns)
+  let headers = ['Year','Age','Portion','But-For Wages','But-For Adj.'];
+  if (showFringe) {
+    if (isUPS) {
+      headers.push('H&W', 'Pension', 'Fringe Total');
+    } else {
+      headers.push('Fringe');
+    }
+  }
+  if (includeLegals) {
+    headers.push('BF Legally Req');
+  }
+  headers.push('Actual Wages','Actual Fringe');
+  if (includeLegals) {
+    headers.push('ACT Legals');
+  }
+  headers.push('Loss','Past');
+  if (includeDiscounting) {
+    headers.push('Future (Raw)','Future (Survival)','PV Future','Survival Prob');
+  } else {
+    headers.push('Future (Nominal)');
+  }
+
+  table.innerHTML = '';
+  const thead = document.createElement('thead');
+  const trh = document.createElement('tr');
+  headers.forEach(h => {
+    const th = document.createElement('th');
+    th.textContent = h;
+    trh.appendChild(th);
+  });
+  thead.appendChild(trh);
+  table.appendChild(thead);
+
+  // Build rows
+  const tbody = document.createElement('tbody');
+  S.rows.forEach(r => {
+    const tr = document.createElement('tr');
+    let cellValues = [
+      r.year, r.age, r.portion.toFixed(3),
+      fmt(r.bfGross, roundAtDisplay), fmt(r.bfAdj, roundAtDisplay)
+    ];
+
+    if (showFringe) {
+      if (isUPS) {
+        cellValues.push(fmt(r.bfHW || 0, roundAtDisplay), fmt(r.bfPension || 0, roundAtDisplay), fmt(r.bfFringe, roundAtDisplay));
+      } else {
+        cellValues.push(fmt(r.bfFringe, roundAtDisplay));
+      }
+    }
+
+    if (includeLegals) {
+      cellValues.push(fmt(r.bfLegals || 0, roundAtDisplay));
+    }
+    cellValues.push(
+      fmt(r.actE, roundAtDisplay), fmt(r.actFringe, roundAtDisplay)
+    );
+    if (includeLegals) {
+      cellValues.push(fmt(r.actLegals || 0, roundAtDisplay));
+    }
+    cellValues.push(
+      fmt(r.loss, roundAtDisplay), fmt(r.pastPart, roundAtDisplay)
+    );
+    if (includeDiscounting) {
+      cellValues.push(
+        fmt(r.futurePart, roundAtDisplay),
+        fmt(r.survivalWeightedFuture ?? r.futurePart, roundAtDisplay),
+        fmt(r.pvFuture, roundAtDisplay),
+        (r.survivalProb ?? 1).toFixed(3)
+      );
+    } else {
+      cellValues.push(fmt(r.futurePart, roundAtDisplay));
+    }
+
+    cellValues.forEach(c => {
+      const td = document.createElement('td');
+      td.textContent = c;
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+
+  // Show detail, hide matrix
+  $('#tableSensitivity').parentElement.style.display = 'none';
+  $('#tableSensitivity').parentElement.previousElementSibling.style.display = 'none';  // Hide instruction text
+  $('#scenarioDetail').style.display = '';
+}
+
+function closeScenarioDetail() {
+  $('#tableSensitivity').parentElement.style.display = '';
+  $('#tableSensitivity').parentElement.previousElementSibling.style.display = '';  // Show instruction text
+  $('#scenarioDetail').style.display = 'none';
+}
+
+function renderRetirementScenarios(scenarios, A) {
+  const table = $('#tableRetirementSummary');
+  if (!table || !scenarios || scenarios.length === 0) return;
+
+  table.innerHTML = '';
+  const roundAtDisplay = !!A.options.roundAtDisplay;
+
+  // Create header
+  const thead = document.createElement('thead');
+  const trh = document.createElement('tr');
+  ['Scenario', 'Retirement Age', 'Retirement Date', 'Past Damages', 'Future PV', 'Total PV'].forEach(h => {
+    const th = document.createElement('th');
+    th.textContent = h;
+    th.style.fontWeight = 'bold';
+    th.style.padding = '8px';
+    trh.appendChild(th);
+  });
+  thead.appendChild(trh);
+  table.appendChild(thead);
+
+  // Create body
+  const tbody = document.createElement('tbody');
+  scenarios.forEach((scenario, idx) => {
+    const tr = document.createElement('tr');
+    tr.dataset.scenarioIndex = idx;
+    tr.addEventListener('click', () => setActiveScenario(idx));
+
+    const cells = [
+      scenario.name,
+      scenario.retireAge,
+      fmtDate(scenario.retireDate),
+      fmt(scenario.totals.pastDam, roundAtDisplay),
+      fmt(scenario.totals.futurePV, roundAtDisplay),
+      fmt(scenario.totals.totalPV, roundAtDisplay)
+    ];
+
+    cells.forEach(c => {
+      const td = document.createElement('td');
+      td.textContent = c;
+      td.style.padding = '8px';
+      tr.appendChild(td);
+    });
+
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+
+  highlightActiveScenarioRow();
+}
+
+function renderSummaryTable(S, A) {
+  const table = $('#tableSummary');
+  if (!table || !S) return;
+
+  const summaryQA = $('#summaryQA');
+
+  table.innerHTML = '';
+  const roundAtDisplay = !!A.options.roundAtDisplay;
+  const isUPS = A.butFor.fringeMethod === 'ups';
+  const aefOn = A.options.includeAEF && A.aef.mode === 'on';
+  const showFringe = !aefOn;
+  const includeLegals = !A.options || A.options.includeLegals !== false;
+
+  // Tinari-style layout when AEF is on
+  if (aefOn) {
+    table.innerHTML = '';
+
+    const round = roundAtDisplay;
+    const formatPct = (v) => (v * 100).toFixed(2) + '%';
+    const discountRate = (A.discount.method === 'ndr') ? (A.discount.ndr || 0) : (A.discount.rate || 0);
+    const discountLabel = isFinite(discountRate) ? `${formatPct(discountRate)} discount` : '';
+    let growthLabel = '';
+    if (A.butFor.growthMethod === 'fixed') {
+      const g = A.butFor.growth || 0;
+      growthLabel = isFinite(g) ? `${formatPct(g)} growth` : '';
+    } else if (A.butFor.growthMethod === 'ups') {
+      growthLabel = 'UPS contract growth (varies)';
+    } else if (A.butFor.growthMethod === 'series') {
+      growthLabel = 'Series growth (varies)';
+    }
+
+  const aef = A.aef || {};
+    const buildAEFFormula = () => {
+      const parts = [];
+      const wle = isFinite(aef.wle) ? aef.wle.toFixed(5) : '';
+      const ufEff = isFinite(aef.ufEff) ? aef.ufEff.toFixed(5) : '';
+      const tlEff = isFinite(aef.tlEff) ? aef.tlEff.toFixed(5) : '';
+      const fb = isFinite(aef.fringePct) ? aef.fringePct.toFixed(5) : '';
+      parts.push(`(WLE/YFS ${wle})`);
+      parts.push(`× (1 - UR×(1-URF) ${ufEff})`);
+      parts.push(`× (1 - TR ${tlEff})`);
+      parts.push(`× (1 + FB ${fb})`);
+      if (A.meta?.caseType === 'wd') {
+        const pc = isFinite(aef.PC) ? aef.PC.toFixed(5) : '0.00000';
+        const pm = isFinite(aef.PM) ? aef.PM.toFixed(5) : '0.00000';
+        parts.push(`× (1 - PC ${pc})`);
+        parts.push(`× (1 - PM ${pm})`);
+      }
+      const factor = isFinite(aef.factor) ? aef.factor.toFixed(5) : '';
+      parts.push(`= ${factor}`);
+      return parts.join(' ');
+    };
+
+    const addSectionRow = (tbody, label) => {
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 5;
+      td.textContent = label;
+      td.style.fontWeight = '700';
+      td.style.padding = '8px 4px';
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+    };
+
+    const headers = ['Year', 'Age', 'Portion of Year', 'Base Earnings', 'Adjusted Income', includeDiscounting ? 'Present Value' : 'Future (Nominal)'];
+    const thead = document.createElement('thead');
+    const trh = document.createElement('tr');
+    headers.forEach(h => { const th=document.createElement('th'); th.textContent = h; trh.appendChild(th); });
+    thead.appendChild(trh);
+
+    const trFormula = document.createElement('tr');
+    ['', '', growthLabel, buildAEFFormula(), includeDiscounting ? discountLabel : 'Discounting OFF', ''].forEach((txt, idx) => {
+      const td = document.createElement('td');
+      td.textContent = txt;
+      td.style.fontStyle = idx === 3 ? 'italic' : '';
+      td.style.fontSize = '12px';
+      trFormula.appendChild(td);
+    });
+    thead.appendChild(trFormula);
+
+    // Algebraic audit helpers
+    const trEq = document.createElement('tr');
+    ['', '', '', 'Adjusted Income = Base × AEF', includeDiscounting ? 'Present Value = Adjusted / (1 + r)^{years from valuation}' : 'Future = Adjusted (no discount)', ''].forEach(txt => {
+      const td = document.createElement('td');
+      td.textContent = txt;
+      td.style.fontStyle = 'italic';
+      td.style.fontSize = '12px';
+      trEq.appendChild(td);
+    });
+    thead.appendChild(trEq);
+
+    const tbody = document.createElement('tbody');
+    addSectionRow(tbody, 'Past Years');
+    const pastRows = S.rowsPre || [];
+    const futureRows = S.rowsPost || [];
+
+    const fmtPctPortion = (v) => ((v || 0) * 100).toFixed(0) + '%';
+    const pvValue = (r) => (r.pastPart || 0) + (includeDiscounting ? (r.pvFuture || 0) : (r.futurePart || 0));
+
+    const addDataRows = (rows, isPast) => {
+      rows.forEach(r => {
+        const tr = document.createElement('tr');
+        const pv = pvValue(r);
+        [
+          r.year,
+          r.age,
+          fmtPctPortion(r.portion),
+          fmt(r.bfGross, round),
+          fmt(r.bfAdj, round),
+          fmt(pv, round)
+        ].forEach(txt => {
+          const td = document.createElement('td');
+          td.textContent = txt;
+          td.style.padding = '6px 8px';
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+    };
+
+    addDataRows(pastRows, true);
+    addSectionRow(tbody, 'Future Years');
+    addDataRows(futureRows, false);
+
+    // Total row
+    const totalTr = document.createElement('tr');
+    const totalVal = includeDiscounting ? (S.totals.totalPV || 0) : ((S.totals.pastDam || 0) + (S.rows?.reduce((a,r)=>a+(r.futurePart||0),0) || 0));
+    ['','','','','', fmt(totalVal, round)].forEach((txt, idx) => {
+      const td = document.createElement('td');
+      td.textContent = txt;
+      td.style.fontWeight = idx === 4 ? '700' : '400';
+      td.style.padding = '8px';
+      totalTr.appendChild(td);
+    });
+    tbody.appendChild(totalTr);
+
+    table.appendChild(thead);
+    table.appendChild(tbody);
+
+    if (summaryQA) {
+      summaryQA.textContent = '';
+    }
+    return;
+  }
+
+  // Create header
+  const thead = document.createElement('thead');
+  const trh = document.createElement('tr');
+  const headers = ['Year', 'Age', 'But-For Wages'];
+  if (showFringe) headers.push(isUPS ? 'Fringe Total' : 'Fringe');
+  if (includeLegals) headers.push('BF Legally Req');
+  headers.push('Actual Wages', 'Actual Fringe');
+  if (includeLegals) headers.push('ACT Legals');
+  headers.push('Annual Loss', 'Past Damage', includeDiscounting ? 'PV Future' : 'Future (Nominal)');
+  headers.forEach(h => {
+    const th = document.createElement('th');
+    th.textContent = h;
+    th.style.fontWeight = 'bold';
+    th.style.padding = '8px';
+    trh.appendChild(th);
+  });
+  thead.appendChild(trh);
+  table.appendChild(thead);
+
+  // Create body
+  const tbody = document.createElement('tbody');
+  S.rows.forEach(row => {
+    const tr = document.createElement('tr');
+
+    const cells = [
+      row.year,
+      row.age,
+      fmt(row.bfGross, roundAtDisplay)
+    ];
+
+    if (showFringe) cells.push(fmt(row.bfFringe, roundAtDisplay));
+    if (includeLegals) cells.push(fmt(row.bfLegals || 0, roundAtDisplay));
+    cells.push(
+      fmt(row.actE, roundAtDisplay),
+      fmt(row.actFringe, roundAtDisplay)
+    );
+    if (includeLegals) cells.push(fmt(row.actLegals || 0, roundAtDisplay));
+    cells.push(
+      fmt(row.loss, roundAtDisplay),
+      fmt(row.pastPart, roundAtDisplay),
+      includeDiscounting ? fmt(row.pvFuture, roundAtDisplay) : fmt(row.futurePart, roundAtDisplay)
+    );
+
+    cells.forEach(c => {
+      const td = document.createElement('td');
+      td.textContent = c;
+      td.style.padding = '8px';
+      tr.appendChild(td);
+    });
+
+    tbody.appendChild(tr);
+  });
+
+  // Add totals row
+  const trTotal = document.createElement('tr');
+  trTotal.style.fontWeight = 'bold';
+  trTotal.style.backgroundColor = 'var(--panel-2)';
+
+  const totalCells = headers.map(h => {
+    if (h === 'Year') return 'TOTAL';
+    if (h === 'Past Damage') return fmt(S.totals.pastDam, roundAtDisplay);
+    if (h === 'PV Future') return fmt(S.totals.futurePV, roundAtDisplay);
+    if (h === 'Future (Nominal)') return fmt(S.rows.reduce((acc,r)=>acc+(r.futurePart||0),0), roundAtDisplay);
+    return '';
+  });
+
+  totalCells.forEach(c => {
+    const td = document.createElement('td');
+    td.textContent = c;
+    td.style.padding = '8px';
+    trTotal.appendChild(td);
+  });
+
+  tbody.appendChild(trTotal);
+  table.appendChild(tbody);
+
+  if (summaryQA) {
+    const sumFuturePV = S.rows.reduce((acc, row) => acc + (row.pvFuture || 0), 0);
+    const diff = Math.abs(sumFuturePV - (S.totals.futurePV || 0));
+    if (diff <= 1) {
+      summaryQA.textContent = 'QA ✓ Year-over-year PV equals scenario Future PV';
+      summaryQA.style.color = 'var(--ok)';
+    } else {
+      summaryQA.textContent = `QA ⚠︎ YOY PV (${fmt(sumFuturePV, true)}) ≠ Scenario Future PV (${fmt(S.totals.futurePV || 0, true)})`;
+      summaryQA.style.color = 'var(--danger)';
+    }
+  }
+
+  renderComplianceChecklist(A, S);
+}
+
+function renderComplianceChecklist(A, S){
+  const list = $('#complianceChecklist');
+  if (!list) return;
+  const entries = [];
+  const rows = S.rows || [];
+  const discountOn = A.options?.includeDiscounting !== false;
+  if (discountOn) {
+    const sumFuturePV = rows.reduce((acc, row) => acc + (row.pvFuture || 0), 0);
+    const diff = Math.abs(sumFuturePV - (S.totals?.futurePV || 0));
+    entries.push({
+      ok: diff <= 1,
+      text: diff <= 1 ? 'YOY Future PV matches scenario total' : 'Fix YOY Future PV mismatch'
+    });
+  }
+  entries.push({
+    ok: discountOn,
+    text: discountOn ? 'Discounting applied to future losses' : 'Enable discounting to reflect time value of money'
+  });
+
+  const legal = A.legalBenefits || {};
+  const includeLegals = A.options?.includeLegals !== false;
+  const legalApplied = includeLegals && (legal.oasdiRate || legal.medicareRate || legal.workersCompRate);
+  entries.push({
+    ok: includeLegals ? !!legalApplied : true,
+    text: includeLegals
+      ? (legalApplied ? 'Legally required benefits applied to but-for stream' : 'Add employer OASDI/Medicare/FUTA/SUTA assumptions')
+      : 'Legally required benefits excluded (per toggle)'
+  });
+
+  if (includeLegals) {
+    const legalActual = legal.applyToActual !== false;
+    entries.push({
+      ok: legalApplied && legalActual,
+      text: legalApplied && legalActual ? 'Mitigation wages include legally required benefits' : 'Apply legally required benefits to mitigation earnings'
+    });
+  }
+
+  const lifeTableOn = (A.lifeTable && A.lifeTable.applySurvival !== false) || (A.options && A.options.applySurvival);
+  entries.push({
+    ok: lifeTableOn,
+    text: lifeTableOn ? `Survival weighting on (${(A.lifeTable?.population || 'combined').toUpperCase()})` : 'Enable survival weighting per CDC life table'
+  });
+
+  const sensitivity = window.__SENSITIVITY__;
+  const growthActive = sensitivity && (sensitivity.growthMode !== 'disabled' || sensitivity.method === 'ndr');
+  entries.push({
+    ok: !!growthActive,
+    text: growthActive
+      ? (sensitivity.method === 'ndr' ? 'Sensitivity grid uses net discount rate (growth disabled by design)' : 'Sensitivity grid varies discount and growth')
+      : 'Re-run sensitivity so growth axis varies (or switch to NDR)'
+  });
+
+  if (A.butFor?.growthMethod === 'series') {
+    const horizonYears = Math.ceil(A.horizon?.yfsYears || 0);
+    const seriesLen = (A.butFor.growthSeries || []).length;
+    const okSeries = seriesLen === 0 || seriesLen >= horizonYears;
+    entries.push({
+      ok: okSeries,
+      text: okSeries ? 'Growth series covers full horizon' : 'Extend growth series (last value currently repeats)'
+    });
+  }
+
+  if (A.discount?.method === 'ndr') {
+    const ndr = A.discount.ndr || 0;
+    entries.push({
+      ok: ndr > 0,
+      text: ndr > 0
+        ? `Net discount rate ${ (ndr * 100).toFixed(2) }%`
+        : 'Set positive net discount rate or document total-offset assumption'
+    });
+  }
+
+  if (A.dates?.retire && A.dates?.valuation) {
+    const retireDate = new Date(A.dates.retire);
+    const valDate = new Date(A.dates.valuation);
+    const okRetire = retireDate >= valDate;
+    entries.push({
+      ok: okRetire,
+      text: okRetire ? 'Retirement date is after valuation date' : 'Fix retirement date before valuation'
+    });
+  }
+
+  if (A.butFor.fringeMethod === 'ups') {
+    const upsGrowth = A.upsFringe?.fringeGrowth || 0;
+    entries.push({
+      ok: upsGrowth > 0,
+      text: upsGrowth > 0
+        ? `UPS H&W/Pension trend applied (${(upsGrowth * 100).toFixed(1)}% annually)`
+        : 'Set UPS fringe growth (e.g., 6% KFF trend)'
+    });
+  }
+
+  list.innerHTML = '';
+  entries.forEach(item => {
+    const li = document.createElement('li');
+    li.textContent = item.text;
+    li.style.color = item.ok ? 'var(--ok)' : 'var(--danger)';
+    list.appendChild(li);
+  });
+}
+
+function render(A, S){
+  ui.assumpsJson.textContent = JSON.stringify(A, null, 2);
+  const dob = new Date(A.dates.dob); const iDate = new Date(A.dates.incident); const vDate = new Date(A.dates.valuation);
+  const ageInjury = ageOn(dob, iDate); const ageToday = ageOn(dob, vDate);
+  ui.kAges.textContent = `Injury: ${ageInjury} | Today: ${ageToday}`;
+  const retireStr = A.dates.retire ? fmtDate(new Date(A.dates.retire)) : '-';
+  const leStr = A.dates.leDate ? fmtDate(new Date(A.dates.leDate)) : '-';
+  ui.kDates.textContent = `Retirement: ${retireStr} | LE date: ${leStr}`;
+
+  // Run and render retirement scenarios
+  window.__RETIREMENT__ = [];
+  try {
+    const retirementScenarios = calculateRetirementScenarios(A, S);
+    window.__RETIREMENT__ = retirementScenarios;
+    renderRetirementScenarios(retirementScenarios, A);
+    setActiveScenario(window.__ACTIVE_SCENARIO_INDEX__ ?? 0);
+  } catch (e) {
+    console.error('Retirement scenarios error:', e);
+    window.__ACTIVE_SCENARIO_INDEX__ = 0;
+    window.__SCHEDULE__ = S;
+    renderTables(A, S);
+    renderSummaryTable(S, A);
+    ui.kTotal.textContent = fmt(S.totals.totalPV, A.options.roundAtDisplay);
+    ui.kPast.textContent = fmt(S.totals.pastDam, A.options.roundAtDisplay);
+    ui.kFuture.textContent = fmt(S.totals.futurePV, A.options.roundAtDisplay);
+  }
+
+  // Run and render sensitivity analysis
+  try {
+    const SA = runSensitivityAnalysis(A);
+    window.__SENSITIVITY__ = SA;
+    renderSensitivityTable(SA, A);
+    renderComplianceChecklist(A, window.__SCHEDULE__ || S);
+  } catch (e) {
+    console.error('Sensitivity analysis error:', e);
+  }
+}
+
+function runCompute(){
+  try {
+    ui.pillStatus.textContent = 'Computing...';
+    const A = buildAssumptions();
+    const S = scheduleFromAssumptions(A);
+    window.__ASSUMPTIONS__ = A;
+    window.__BASE_SCHEDULE__ = S;
+    window.__SCHEDULE__ = S;
+    render(A, S);
+    ui.pillStatus.textContent = 'Done';
+  } catch (e){ ui.pillStatus.textContent = 'Error'; alert(e.message || e); }
+}
+
+ui.btnRun.addEventListener('click', runCompute);
+ui.btnExportCsv.addEventListener('click', ()=>{
+  const S = window.__SCHEDULE__; const A = window.__ASSUMPTIONS__;
+  if (!S || !A) { alert('No results yet. Click Compute.'); return; }
+
+  // Adjust headers based on fringe method
+  const aefOn = A.options.includeAEF && A.aef.mode === 'on';
+  const showFringe = !aefOn;
+  const includeLegals = !A.options || A.options.includeLegals !== false;
+
+  let headers = ['year','age','portion','bfGross','bfAdj'];
+  if (showFringe) {
+    if (A.butFor.fringeMethod === 'ups') {
+      headers.push('bfHW','bfPension','bfFringe');
+    } else {
+      headers.push('bfFringe');
+    }
+  }
+  if (includeLegals) headers.push('bfLegals');
+  headers.push('actE','actFringe');
+  if (includeLegals) headers.push('actLegals');
+  headers.push('loss','pastPart');
+  headers.push('futurePart','futureSurvival','pvFuture','survivalProb');
+
+  const rows = [...S.rowsPre, ...S.rowsPost].map(r=> headers.map(h=> {
+    if (h === 'futureSurvival') return r.survivalWeightedFuture ?? r.futurePart ?? 0;
+    if (h === 'survivalProb') return r.survivalProb ?? 1;
+    return r[h] ?? 0;
+  }));
+  const csv = [headers.join(','), ...rows.map(r=> r.join(','))].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'damages_schedule.csv'; a.click();
+});
+
+ui.btnExportWord = $('#btnExportWord');
+ui.btnExportWord.addEventListener('click', async ()=>{
+  const S = window.__SCHEDULE__; const A = window.__ASSUMPTIONS__;
+  if (!S || !A) { alert('No results yet. Click Compute.'); return; }
+
+  try {
+    ui.pillStatus.textContent = 'Exporting...';
+
+    // Prepare data including retirement scenarios and sensitivity analysis
+    // Convert Date objects to ISO strings for JSON serialization
+    const retirementScenarios = (window.__RETIREMENT__ || []).map(scenario => ({
+      ...scenario,
+      retireDate: scenario.retireDate instanceof Date ? scenario.retireDate.toISOString() : scenario.retireDate,
+      schedule: scenario.schedule // Keep schedule as is, already serializable
+    }));
+
+    const exportData = {
+      assumptions: A,
+      schedule: S,
+      retirementScenarios: retirementScenarios,
+      sensitivityAnalysis: window.__SENSITIVITY__ || {},
+      activeScenario: {
+        index: window.__ACTIVE_SCENARIO_INDEX__ ?? 0,
+        name: (window.__RETIREMENT__ || [])[window.__ACTIVE_SCENARIO_INDEX__ ?? 0]?.name || 'Assumed retirement age'
+      }
+    };
+
+    const response = await fetch('/api/export/word', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(exportData)
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Export failed');
+    }
+
+    // Download the file
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `damages_report_${A.meta.caseName.replace(/[^a-z0-9]/gi, '_')}_${new Date().toISOString().slice(0,10)}.docx`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+
+    ui.pillStatus.textContent = 'Exported';
+  } catch (e) {
+    ui.pillStatus.textContent = 'Export failed';
+    alert('Word export failed: ' + e.message);
+  }
+});
+
+ui.btnExportExcel?.addEventListener('click', async ()=>{
+  const S = window.__SCHEDULE__; const A = window.__ASSUMPTIONS__;
+  if (!S || !A) { alert('No results yet. Click Compute.'); return; }
+
+  try {
+    ui.pillStatus.textContent = 'Exporting...';
+
+    const retirementScenarios = (window.__RETIREMENT__ || []).map(scenario => ({
+      ...scenario,
+      retireDate: scenario.retireDate instanceof Date ? scenario.retireDate.toISOString() : scenario.retireDate,
+      schedule: scenario.schedule
+    }));
+
+    const exportData = {
+      assumptions: A,
+      schedule: S,
+      retirementScenarios: retirementScenarios,
+      sensitivityAnalysis: window.__SENSITIVITY__ || {},
+      activeScenario: {
+        index: window.__ACTIVE_SCENARIO_INDEX__ ?? 0,
+        name: (window.__RETIREMENT__ || [])[window.__ACTIVE_SCENARIO_INDEX__ ?? 0]?.name || 'Assumed retirement age'
+      }
+    };
+
+    const response = await fetch('/api/export/excel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(exportData)
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Export failed');
+    }
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `damages_report_${A.meta.caseName.replace(/[^a-z0-9]/gi, '_')}_${new Date().toISOString().slice(0,10)}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+
+    ui.pillStatus.textContent = 'Exported';
+  } catch (e) {
+    ui.pillStatus.textContent = 'Export failed';
+    alert('Excel export failed: ' + e.message);
+  }
+});
+
+ui.btnPrint.addEventListener('click', ()=> window.print());
+ui.btnSave.addEventListener('click', ()=>{ const A = buildAssumptions(); const blob = new Blob([JSON.stringify(A,null,2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'assumptions.json'; a.click(); });
+ui.btnLoad.addEventListener('click', async ()=>{ const inp = document.createElement('input'); inp.type='file'; inp.accept='application/json'; inp.onchange = async () => { const file = inp.files[0]; if(!file) return; const text = await file.text(); try { const A = JSON.parse(text); restoreUI(A); runCompute(); } catch(e){ alert('Invalid JSON'); } }; inp.click(); });
+
+// --- Edit Mode Functions ---
+function makeEditable(td, year, field, currentActE, currentActFringe) {
+  const currentValue = field === 'actE' ? currentActE : currentActFringe;
+  const input = document.createElement('input');
+  input.type = 'number';
+  input.step = '0.01';
+  input.value = currentValue;
+  input.style.width = '100%';
+
+  const save = () => {
+    const newValue = Number(input.value) || 0;
+    const actE = field === 'actE' ? newValue : currentActE;
+    const actFringe = field === 'actFringe' ? newValue : currentActFringe;
+    setManualOverride(year, actE, actFringe);
+    runCompute();
+  };
+
+  input.onblur = save;
+  input.onkeydown = (e) => {
+    if (e.key === 'Enter') save();
+    if (e.key === 'Escape') runCompute();
+  };
+
+  td.innerHTML = '';
+  td.appendChild(input);
+  input.focus();
+  input.select();
+}
+
+$('#toggleEditMode')?.addEventListener('click', () => {
+  editModeEnabled = !editModeEnabled;
+  const btn = $('#toggleEditMode');
+  const status = $('#editModeStatus');
+  const clearBtn = $('#clearOverrides');
+
+  if (editModeEnabled) {
+    btn.textContent = '✅ Disable Edit Mode';
+    btn.style.background = 'var(--ok)';
+    btn.style.color = 'var(--bg)';
+    status.style.display = '';
+    if (hasAnyOverrides()) clearBtn.style.display = '';
+  } else {
+    btn.textContent = '✏️ Enable Edit Mode';
+    btn.style.background = '';
+    btn.style.color = '';
+    status.style.display = 'none';
+  }
+
+  runCompute(); // Re-render tables with/without edit mode
+});
+
+$('#clearOverrides')?.addEventListener('click', clearManualOverrides);
+$('#btnCloseScenario')?.addEventListener('click', closeScenarioDetail);
+
+// --- Profiles UI wiring ---
+function loadProfileMapSafe(){ return loadProfileMap(); }
+async function refreshProfiles(){ await refreshProfileSelect(); }
+function saveCurrentProfile(name){ const map = loadProfileMapSafe(); map[name] = buildAssumptions(); saveProfileMap(map); refreshProfiles(); }
+
+ui.profileSave?.addEventListener('click', ()=>{ const name = ui.profileName.value.trim(); if(!name){ alert('Enter a profile name.'); return; } saveCurrentProfile(name); ui.profileSelect.value = 'local:' + name; alert('Profile saved locally.'); });
+
+ui.profileSyncLocalToDb?.addEventListener('click', async ()=>{
+  const selected = ui.profileSelect.value || ui.profileName.value.trim();
+  const isLocal = selected.startsWith('local:') || (!selected.startsWith('db:') && selected.length > 0);
+  const profileName = selected.startsWith('local:') ? selected.substring(6) : selected;
+  if(!profileName){ alert('Select or enter a local profile to push.'); return; }
+
+  const map = loadProfileMapSafe();
+  const assumptions = map[profileName];
+  if(!assumptions){ alert('Local profile not found.'); return; }
+
+  try {
+    const schedule = scheduleFromAssumptions(assumptions);
+    // Persist profile and most recent calculation to DB via the adapter
+    await window.profileAdapter.saveProfile(profileName, assumptions);
+    if (schedule) {
+      await window.profileAdapter.saveCalculation(profileName, assumptions, schedule);
+    }
+    await refreshProfiles();
+    ui.profileSelect.value = 'db:' + profileName;
+    alert('Local profile pushed to database.');
+  } catch(e) {
+    alert('Error pushing to database: ' + e.message);
+    console.error(e);
+  }
+});
+
+ui.profileSaveDB?.addEventListener('click', async ()=>{
+  const profileName = ui.profileName.value.trim();
+  if(!profileName){ alert('Enter a profile name.'); return; }
+
+  try {
+    const A = buildAssumptions();
+    const S = scheduleFromAssumptions(A);
+
+    if (!window.profileAdapter || !window.profileAdapter.saveProfile) {
+      throw new Error('API bridge not loaded; cannot save to database.');
+    }
+
+    // Persist assumptions and latest calculation via the API bridge
+    await window.profileAdapter.saveProfile(profileName, A);
+    if (S) {
+      await window.profileAdapter.saveCalculation(profileName, A, S);
+    }
+
+    await refreshProfiles();
+    ui.profileSelect.value = 'db:' + profileName;
+    alert('Profile saved to database successfully!');
+  } catch(e) {
+    alert('Error saving to database: ' + e.message);
+    console.error(e);
+  }
+});
+
+ui.profileLoad?.addEventListener('click', async ()=>{
+  const selected = ui.profileSelect.value || ui.profileName.value.trim();
+  if(!selected){ alert('Select or enter a profile to load.'); return; }
+
+  // Check if it's a database profile
+  if (selected.startsWith('db:')) {
+    const profileName = selected.substring(3);
+    try {
+      // Use profile adapter to fetch the full stored assumptions
+      const profile = await window.profileAdapter.getProfile(profileName);
+      if (!profile) throw new Error('Profile not found in database');
+
+      // profileAdapter packs assumptions directly; fall back to meta defaults if needed
+      const assumptions = {
+        meta: { profileName: profileName, ...(profile.meta || {}) },
+        ...profile
+      };
+
+      restoreUI(assumptions);
+      runCompute();
+    } catch(e) {
+      alert('Error loading database profile: ' + e.message);
+      console.error(e);
+    }
+  } else {
+    // localStorage profile
+    const name = selected.startsWith('local:') ? selected.substring(6) : selected;
+    const map = loadProfileMapSafe();
+    const A = map[name];
+    if(!A){ alert('Profile not found.'); return; }
+    restoreUI(A);
+    runCompute();
+  }
+});
+ui.profileDelete?.addEventListener('click', ()=>{
+  const selected = ui.profileSelect.value || ui.profileName.value.trim();
+  if(!selected){ alert('Select or enter a profile to delete.'); return; }
+
+  // Only allow deleting local profiles for now
+  if (selected.startsWith('db:')) {
+    alert('Cannot delete database profiles from this interface. Use the database management tools.');
+    return;
+  }
+
+  const name = selected.startsWith('local:') ? selected.substring(6) : selected;
+  const map = loadProfileMapSafe();
+  if(!map[name]){ alert('Profile not found.'); return; }
+  if(!confirm('Delete profile "'+name+'"?')) return;
+  delete map[name];
+  saveProfileMap(map);
+  refreshProfiles();
+  ui.profileName.value='';
+  alert('Deleted.');
+});
+ui.profileDuplicate?.addEventListener('click', ()=>{
+  const selected = ui.profileSelect.value || ui.profileName.value.trim();
+  if(!selected){ alert('Select or enter a profile to duplicate.'); return; }
+
+  // Strip prefix if present
+  const name = selected.startsWith('local:') ? selected.substring(6) : (selected.startsWith('db:') ? selected.substring(3) : selected);
+
+  const map = loadProfileMapSafe();
+  const A = map[name] || buildAssumptions();
+  const ts = new Date().toISOString().replace(/[:T]/g,'-').slice(0,19);
+  const newName = name + ' (copy ' + ts + ')';
+  map[newName] = A;
+  saveProfileMap(map);
+  refreshProfiles();
+  ui.profileName.value = newName;
+  ui.profileSelect.value = 'local:' + newName;
+  alert('Duplicated to '+newName);
+});
+ui.profileExport?.addEventListener('click', ()=>{ const map = loadProfileMapSafe(); const blob = new Blob([JSON.stringify(map,null,2)], { type:'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'bfda_profiles.json'; a.click(); });
+ui.profileImport?.addEventListener('click', ()=>{ const inp = document.createElement('input'); inp.type='file'; inp.accept='application/json'; inp.onchange = async ()=>{ const file = inp.files[0]; if(!file) return; try { const text = await file.text(); const incoming = JSON.parse(text); const map = loadProfileMapSafe(); Object.assign(map, incoming||{}); saveProfileMap(map); refreshProfiles(); alert('Profiles imported.'); } catch(e){ alert('Invalid profiles file'); } }; inp.click(); });
+
+// Autosave: when Case Name changes, set profile name if empty; on any input change, save if profile name set
+let autosaveTimer = null;
+function queueAutosave(){ if(!ui.profileName.value.trim()) return; clearTimeout(autosaveTimer); autosaveTimer = setTimeout(()=>{ try { saveCurrentProfile(ui.profileName.value.trim()); } catch(_){} }, 800); }
+['input','change'].forEach(evt=>{ document.addEventListener(evt, (e)=>{ const t = e.target; if(!(t instanceof HTMLElement)) return; if(t.closest('aside')) queueAutosave(); }, true); });
+ui.caseName.addEventListener('blur', ()=>{ if(!ui.profileName.value.trim() && ui.caseName.value.trim()){ ui.profileName.value = ui.caseName.value.trim(); saveCurrentProfile(ui.profileName.value.trim()); refreshProfiles(); ui.profileSelect.value = 'local:' + ui.profileName.value.trim(); } });
+
+// Periodic autosave every 3 minutes (also keeps a backup copy)
+function getAutosaveMs(){
+  const mins = Number(ui.autosaveMinutes?.value || 3);
+  const clamped = isFinite(mins) && mins >= 1 ? mins : 3;
+  return clamped * 60 * 1000;
+}
+let autosaveHandle = null;
+function startPeriodicAutosave(){
+  if (autosaveHandle) clearInterval(autosaveHandle);
+  autosaveHandle = setInterval(periodicAutosave, getAutosaveMs());
+}
+function periodicAutosave(){
+  try {
+    const name = ui.profileName.value && ui.profileName.value.trim();
+    const A = buildAssumptions();
+    if (name) { saveCurrentProfile(name); }
+    localStorage.setItem('bfda_autosave_backup', JSON.stringify({ ts: new Date().toISOString(), assumptions: A }));
+    if (ui.autosaveStatus) ui.autosaveStatus.textContent = 'Autosaved ' + new Date().toLocaleTimeString();
+  } catch (_) { /* ignore */ }
+}
+ui.autosaveMinutes?.addEventListener('change', ()=>{ startPeriodicAutosave(); periodicAutosave(); });
+startPeriodicAutosave();
+
+document.querySelectorAll('.wd-only').forEach(el=> el.style.display = (ui.caseType.value==='wd') ? '' : 'none');
+
+// Restore-from-autosave prompt (if newer backup exists)
+(function tryRestoreFromBackup(){
+  try {
+    const raw = localStorage.getItem('bfda_autosave_backup');
+    if (!raw) return;
+    const backup = JSON.parse(raw);
+    if (!backup || !backup.assumptions) return;
+    const backupTs = new Date(backup.ts || 0).getTime();
+    const oneDayMs = 24*60*60*1000;
+    if (Date.now() - backupTs < oneDayMs) {
+      if (confirm('A recent autosave was found. Restore it?')) {
+        restoreUI(backup.assumptions);
+        runCompute();
+      }
+    }
+  } catch(_){}
+})();
+
+// Defaults
+restoreUI({
+  meta:{ caseName: 'Sample', caseType: 'pi' },
+  dates:{ dob: '1990-01-15', valuation: new Date().toISOString().slice(0,10), incident: new Date(new Date().getFullYear()-2,0,1).toISOString().slice(0,10) },
+  horizon:{ wleYears: 24.50, yfsYears: 29.50, leYears: 41.20, pjiYears: 0 },
+  butFor:{ baseAnnual: 65000, fringePct: .2, fringeMethod: 'simple', growthMethod: 'fixed', growth: .03, growthSeries: [] },
+  upsFringe:{ employmentType: 'fulltime', jobClass: 'driver', weeklyIncrease: 40, hwPerHour: 0.50, pensionAccrual: 65, maxServiceYears: 35 },
+  aef:{ mode: 'on', UR: .035, URF: .30, TLF: .22, TLS: .05, PC: 0, PM: 0 },
+  actual:{ start: new Date(new Date().getFullYear()-1,0,1).toISOString().slice(0,10), annual: 22000, growth: .02, fringePct: .1 },
+  discount:{ method: 'ndr', ndr: .015, rate: .05, growth: .03 },
+  options:{ roundAtDisplay: true, includeAEF: true, includeLegals: true, includeBFFringe: true, includeMitigation: true, includeActualFringe: true, includeDiscounting: true }
+});
+runCompute();
+
+// Tabs
+$$('.tabbtn').forEach(btn=> btn.addEventListener('click', ()=>{
+  $$('.tabbtn').forEach(b=> b.classList.remove('active')); btn.classList.add('active');
+  const tab = btn.dataset.tab; const res = window.__SCHEDULE__;
+  if (!res) return;
+
+  // Handle sensitivity tab separately
+  if (tab === 'sensitivity') {
+    $('#results').style.display = 'none';
+    $('#sensitivityView').style.display = '';
+    $('#retirementView').style.display = 'none';
+  } else if (tab === 'retirement') {
+    $('#results').style.display = 'none';
+    $('#sensitivityView').style.display = 'none';
+    $('#retirementView').style.display = '';
+  } else {
+    $('#results').style.display = '';
+    $('#sensitivityView').style.display = 'none';
+    $('#retirementView').style.display = 'none';
+
+    if (tab==='pre'){ ui.table.parentElement.scrollIntoView({behavior:'smooth'}); }
+    else if (tab==='post'){ ui.tablePost.parentElement.scrollIntoView({behavior:'smooth'}); }
+    else { window.scrollTo({top:0, behavior:'smooth'}); }
+  }
+}));
+
+// Tests
+function assertAlmostEqual(a,b,eps=1e-9){ if (Math.abs(a-b)>eps) throw new Error(`Assert failed: ${a} != ${b}`); }
+ui.btnRunTests?.addEventListener('click', ()=>{
+  try {
+    // Year fraction sanity
+    const d0 = new Date(Date.UTC(2020,0,1)); const d1 = new Date(Date.UTC(2021,0,1));
+    assertAlmostEqual(Number(yearFrac(d0,d1).toFixed(6)), 1.000000, 1e-6);
+    const d2 = new Date(Date.UTC(2019,0,1)), d3 = new Date(Date.UTC(2020,0,1));
+    assertAlmostEqual(Number(yearFrac(d2,d3).toFixed(6)), 1.000000, 1e-6);
+
+    // addYears fractional uses Actual/Actual
+    const d4 = new Date(Date.UTC(2020,0,1));
+    const d4p = addYears(d4, 0.5);
+    assertAlmostEqual((d4p - d4)/MS_PER_DAY, 183, 1e-9);
+
+    // AEF computation with UR/URF and split tax
+    const A = { horizon:{ wleYears: 20, yfsYears: 25 }, aef:{ UR:.04, URF:.25, TLF:.22, TLS:.05, PC:.10, PM:.05 }, meta:{caseType:'wd'} };
+    const wlr = A.horizon.wleYears/A.horizon.yfsYears;
+    const ufEff = A.aef.UR*(1-A.aef.URF);
+    const tlEff = 1 - (1 - A.aef.TLF) * (1 - A.aef.TLS);
+    const AEF = wlr*(1-ufEff)*(1-tlEff)*(1-A.aef.PC)*(1-A.aef.PM);
+    assertAlmostEqual(Number(wlr.toFixed(5)), 0.8, 1e-5);
+    const expected = 0.8 * (1 - 0.04*0.75) * (1 - (1-0.22)*(1-0.05)) * 0.90 * 0.95;
+    assertAlmostEqual(Number(AEF.toFixed(5)), Number(expected.toFixed(5)), 1e-5);
+    assertAlmostEqual(Number(tlEff.toFixed(3)), 0.259, 1e-3);
+
+    // growth series fallback
+    const gs = { butFor:{ growthMethod:'series', growthSeries:[0.03] } };
+    const g0 = (idx)=> (gs.butFor.growthSeries[idx] ?? gs.butFor.growthSeries[gs.butFor.growthSeries.length-1]);
+    if (g0(2)!==0.03) throw new Error('growth series fallback failed');
+
+    alert('All tests passed!');
+    ui.pillStatus.textContent = 'Tests passed';
+  } catch(e){ alert('Test failed: ' + e.message); ui.pillStatus.textContent = 'Tests failed'; }
+});
+
+// Initialize
+initCollapsibleSections();
+refreshProfiles();
+resolveAllConflicts(); // Initialize all UI states and resolve conflicts
+</script>
+</body>
+</html>
