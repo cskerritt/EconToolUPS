@@ -2,7 +2,6 @@
 Configuration for But-For Damages Analyzer Backend
 """
 import os
-from datetime import timedelta
 
 class Config:
     """Base configuration"""
@@ -14,6 +13,10 @@ class Config:
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or \
         'sqlite:///' + os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'bfda.db')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        'pool_pre_ping': True,
+        'pool_recycle': 3600,
+    }
 
     # CORS
     CORS_ORIGINS = [
