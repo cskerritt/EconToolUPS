@@ -636,8 +636,15 @@ async function refreshProfileSelect(){
   opt.textContent='Select profile';
   sel.appendChild(opt);
 
-  // Load from localStorage
-  const localMap = loadProfileMap();
+  // Load from localStorage (or API-bridged map if overridden)
+  let localMap = {};
+  try {
+    const maybeMap = typeof loadProfileMap === 'function' ? loadProfileMap() : {};
+    localMap = (maybeMap && typeof maybeMap.then === 'function') ? await maybeMap : (maybeMap || {});
+  } catch(e) {
+    console.log('Could not load local profiles:', e);
+    localMap = {};
+  }
   const localNames = Object.keys(localMap).sort();
 
   // Load from database API
@@ -2940,11 +2947,35 @@ $('#clearOverrides')?.addEventListener('click', clearManualOverrides);
 $('#btnCloseScenario')?.addEventListener('click', closeScenarioDetail);
 
 // --- Profiles UI wiring ---
-function loadProfileMapSafe(){ return loadProfileMap(); }
-async function refreshProfiles(){ await refreshProfileSelect(); }
-function saveCurrentProfile(name){ const map = loadProfileMapSafe(); map[name] = buildAssumptions(); saveProfileMap(map); refreshProfiles(); }
+async function loadProfileMapSafe(){
+  try {
+    const maybeMap = typeof loadProfileMap === 'function' ? loadProfileMap() : {};
+    return (maybeMap && typeof maybeMap.then === 'function') ? await maybeMap : (maybeMap || {});
+  } catch(e) {
+    console.error('Failed to load profile map:', e);
+    return {};
+  }
+}
 
-ui.profileSave?.addEventListener('click', ()=>{ const name = ui.profileName.value.trim(); if(!name){ alert('Enter a profile name.'); return; } saveCurrentProfile(name); ui.profileSelect.value = 'local:' + name; alert('Profile saved locally.'); });
+async function saveProfileMapSafe(map){
+  if (typeof saveProfileMap === 'function') {
+    const maybe = saveProfileMap(map);
+    if (maybe && typeof maybe.then === 'function') {
+      await maybe;
+    }
+  }
+}
+
+async function refreshProfiles(){ await refreshProfileSelect(); }
+
+async function saveCurrentProfile(name){
+  const map = await loadProfileMapSafe();
+  map[name] = buildAssumptions();
+  await saveProfileMapSafe(map);
+  await refreshProfiles();
+}
+
+ui.profileSave?.addEventListener('click', async ()=>{ const name = ui.profileName.value.trim(); if(!name){ alert('Enter a profile name.'); return; } await saveCurrentProfile(name); ui.profileSelect.value = 'local:' + name; alert('Profile saved locally.'); });
 
 ui.profileSyncLocalToDb?.addEventListener('click', async ()=>{
   const selected = ui.profileSelect.value || ui.profileName.value.trim();
@@ -2952,7 +2983,7 @@ ui.profileSyncLocalToDb?.addEventListener('click', async ()=>{
   const profileName = selected.startsWith('local:') ? selected.substring(6) : selected;
   if(!profileName){ alert('Select or enter a local profile to push.'); return; }
 
-  const map = loadProfileMapSafe();
+  const map = await loadProfileMapSafe();
   const assumptions = map[profileName];
   if(!assumptions){ alert('Local profile not found.'); return; }
 
@@ -3026,14 +3057,14 @@ ui.profileLoad?.addEventListener('click', async ()=>{
   } else {
     // localStorage profile
     const name = selected.startsWith('local:') ? selected.substring(6) : selected;
-    const map = loadProfileMapSafe();
+    const map = await loadProfileMapSafe();
     const A = map[name];
     if(!A){ alert('Profile not found.'); return; }
     restoreUI(A);
     runCompute();
   }
 });
-ui.profileDelete?.addEventListener('click', ()=>{
+ui.profileDelete?.addEventListener('click', async ()=>{
   const selected = ui.profileSelect.value || ui.profileName.value.trim();
   if(!selected){ alert('Select or enter a profile to delete.'); return; }
 
@@ -3044,41 +3075,41 @@ ui.profileDelete?.addEventListener('click', ()=>{
   }
 
   const name = selected.startsWith('local:') ? selected.substring(6) : selected;
-  const map = loadProfileMapSafe();
+  const map = await loadProfileMapSafe();
   if(!map[name]){ alert('Profile not found.'); return; }
   if(!confirm('Delete profile "'+name+'"?')) return;
   delete map[name];
-  saveProfileMap(map);
-  refreshProfiles();
+  await saveProfileMapSafe(map);
+  await refreshProfiles();
   ui.profileName.value='';
   alert('Deleted.');
 });
-ui.profileDuplicate?.addEventListener('click', ()=>{
+ui.profileDuplicate?.addEventListener('click', async ()=>{
   const selected = ui.profileSelect.value || ui.profileName.value.trim();
   if(!selected){ alert('Select or enter a profile to duplicate.'); return; }
 
   // Strip prefix if present
   const name = selected.startsWith('local:') ? selected.substring(6) : (selected.startsWith('db:') ? selected.substring(3) : selected);
 
-  const map = loadProfileMapSafe();
+  const map = await loadProfileMapSafe();
   const A = map[name] || buildAssumptions();
   const ts = new Date().toISOString().replace(/[:T]/g,'-').slice(0,19);
   const newName = name + ' (copy ' + ts + ')';
   map[newName] = A;
-  saveProfileMap(map);
-  refreshProfiles();
+  await saveProfileMapSafe(map);
+  await refreshProfiles();
   ui.profileName.value = newName;
   ui.profileSelect.value = 'local:' + newName;
   alert('Duplicated to '+newName);
 });
-ui.profileExport?.addEventListener('click', ()=>{ const map = loadProfileMapSafe(); const blob = new Blob([JSON.stringify(map,null,2)], { type:'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'bfda_profiles.json'; a.click(); });
-ui.profileImport?.addEventListener('click', ()=>{ const inp = document.createElement('input'); inp.type='file'; inp.accept='application/json'; inp.onchange = async ()=>{ const file = inp.files[0]; if(!file) return; try { const text = await file.text(); const incoming = JSON.parse(text); const map = loadProfileMapSafe(); Object.assign(map, incoming||{}); saveProfileMap(map); refreshProfiles(); alert('Profiles imported.'); } catch(e){ alert('Invalid profiles file'); } }; inp.click(); });
+ui.profileExport?.addEventListener('click', async ()=>{ const map = await loadProfileMapSafe(); const blob = new Blob([JSON.stringify(map,null,2)], { type:'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'bfda_profiles.json'; a.click(); });
+ui.profileImport?.addEventListener('click', ()=>{ const inp = document.createElement('input'); inp.type='file'; inp.accept='application/json'; inp.onchange = async ()=>{ const file = inp.files[0]; if(!file) return; try { const text = await file.text(); const incoming = JSON.parse(text); const map = await loadProfileMapSafe(); Object.assign(map, incoming||{}); await saveProfileMapSafe(map); await refreshProfiles(); alert('Profiles imported.'); } catch(e){ alert('Invalid profiles file'); } }; inp.click(); });
 
 // Autosave: when Case Name changes, set profile name if empty; on any input change, save if profile name set
 let autosaveTimer = null;
-function queueAutosave(){ if(!ui.profileName.value.trim()) return; clearTimeout(autosaveTimer); autosaveTimer = setTimeout(()=>{ try { saveCurrentProfile(ui.profileName.value.trim()); } catch(_){} }, 800); }
+function queueAutosave(){ if(!ui.profileName.value.trim()) return; clearTimeout(autosaveTimer); autosaveTimer = setTimeout(async ()=>{ try { await saveCurrentProfile(ui.profileName.value.trim()); } catch(e){ console.error('Autosave failed:', e); } }, 800); }
 ['input','change'].forEach(evt=>{ document.addEventListener(evt, (e)=>{ const t = e.target; if(!(t instanceof HTMLElement)) return; if(t.closest('aside')) queueAutosave(); }, true); });
-ui.caseName.addEventListener('blur', ()=>{ if(!ui.profileName.value.trim() && ui.caseName.value.trim()){ ui.profileName.value = ui.caseName.value.trim(); saveCurrentProfile(ui.profileName.value.trim()); refreshProfiles(); ui.profileSelect.value = 'local:' + ui.profileName.value.trim(); } });
+ui.caseName.addEventListener('blur', async ()=>{ if(!ui.profileName.value.trim() && ui.caseName.value.trim()){ ui.profileName.value = ui.caseName.value.trim(); await saveCurrentProfile(ui.profileName.value.trim()); await refreshProfiles(); ui.profileSelect.value = 'local:' + ui.profileName.value.trim(); } });
 
 // Periodic autosave every 3 minutes (also keeps a backup copy)
 function getAutosaveMs(){
@@ -3089,13 +3120,13 @@ function getAutosaveMs(){
 let autosaveHandle = null;
 function startPeriodicAutosave(){
   if (autosaveHandle) clearInterval(autosaveHandle);
-  autosaveHandle = setInterval(periodicAutosave, getAutosaveMs());
+  autosaveHandle = setInterval(()=>{ periodicAutosave().catch(()=>{}); }, getAutosaveMs());
 }
-function periodicAutosave(){
+async function periodicAutosave(){
   try {
     const name = ui.profileName.value && ui.profileName.value.trim();
     const A = buildAssumptions();
-    if (name) { saveCurrentProfile(name); }
+    if (name) { await saveCurrentProfile(name); }
     localStorage.setItem('bfda_autosave_backup', JSON.stringify({ ts: new Date().toISOString(), assumptions: A }));
     if (ui.autosaveStatus) ui.autosaveStatus.textContent = 'Autosaved ' + new Date().toLocaleTimeString();
   } catch (_) { /* ignore */ }
