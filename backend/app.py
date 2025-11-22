@@ -1,8 +1,10 @@
 """
 Flask API for But-For Damages Analyzer
 """
-import os
+import hashlib
 import io
+import json
+import os
 import tempfile
 from datetime import datetime
 from flask import Flask, request, jsonify, send_from_directory, send_file
@@ -22,6 +24,126 @@ import numpy as np
 
 from models import db, init_db, Evaluee, Case, Calculation
 from config import config
+
+
+# Range validation rules to enforce accuracy and block implausible scenarios
+RANGE_VALIDATION_RULES = [
+    {
+        'label': 'Growth rate',
+        'path': ('butFor', 'growth'),
+        'min': -0.05,
+        'max': 0.15,
+        'description': 'Expected to fall between -5% (contraction) and 15% (aggressive growth).'
+    },
+    {
+        'label': 'Discount rate',
+        'path': ('discount', 'rate'),
+        'min': -0.05,
+        'max': 0.2,
+        'description': 'Net discount rates should typically remain within -5% and 20%.'
+    },
+    {
+        'label': 'Net discount rate',
+        'path': ('discount', 'ndr'),
+        'min': -0.05,
+        'max': 0.2,
+        'description': 'Net discount rates should typically remain within -5% and 20%.'
+    },
+    {
+        'label': 'Unemployment factor',
+        'path': ('aef', 'ufEff'),
+        'min': 0,
+        'max': 0.35,
+        'description': 'Unemployment factors above 35% or below 0 are flagged as implausible.'
+    },
+    {
+        'label': 'Tax load',
+        'path': ('aef', 'tlEff'),
+        'min': 0,
+        'max': 0.65,
+        'description': 'Combined effective tax loads rarely exceed 65% of wages.'
+    },
+    {
+        'label': 'Fringe/benefit percentage',
+        'path': ('aef', 'fringePct'),
+        'min': 0,
+        'max': 0.75,
+        'description': 'Fringe loads above 75% of wages should be reviewed before use.'
+    },
+]
+
+
+def _get_nested_value(data, path):
+    """Safely walk a dict using a tuple path."""
+
+    cursor = data if isinstance(data, dict) else {}
+    for key in path:
+        if not isinstance(cursor, dict):
+            return None
+        cursor = cursor.get(key)
+    return cursor
+
+
+def _validate_assumption_ranges(assumptions):
+    """Validate assumption values against configured ranges.
+
+    Returns a list of human-readable violations. An empty list indicates all
+    monitored fields are within range or unavailable.
+    """
+
+    violations = []
+    for rule in RANGE_VALIDATION_RULES:
+        raw_value = _get_nested_value(assumptions, rule['path'])
+        if raw_value is None:
+            continue
+
+        try:
+            value = float(raw_value)
+        except (TypeError, ValueError):
+            violations.append(
+                f"{rule['label']}: expected a numeric value but received {raw_value!r}."
+            )
+            continue
+
+        if not (rule['min'] <= value <= rule['max']):
+            violations.append(
+                f"{rule['label']} {value:.4g} is outside the expected range "
+                f"[{rule['min']}, {rule['max']}]. {rule['description']}"
+            )
+
+    return violations
+
+
+def _compute_assumption_fingerprint(assumptions):
+    """Generate a stable SHA-256 fingerprint for the provided assumptions."""
+
+    try:
+        normalized = json.dumps(assumptions or {}, sort_keys=True, default=str)
+    except TypeError:
+        normalized = json.dumps(str(assumptions or {}), sort_keys=True)
+    return hashlib.sha256(normalized.encode('utf-8')).hexdigest()
+
+
+def _build_provenance_metadata(assumptions):
+    """Create provenance metadata including sources, fingerprint, and timestamp."""
+
+    meta = assumptions.get('meta', {}) if isinstance(assumptions, dict) else {}
+    life_table = assumptions.get('lifeTable', {}) if isinstance(assumptions, dict) else {}
+
+    sources = []
+    if life_table.get('source'):
+        population = life_table.get('population', 'combined').title()
+        sources.append(f"Life table: {life_table['source']} [{population}]")
+    if meta.get('wageSourceNotes'):
+        sources.append(f"Wage/growth documentation: {meta['wageSourceNotes']}")
+    if meta.get('benefitSourceNotes'):
+        sources.append(f"Fringe/benefit documentation: {meta['benefitSourceNotes']}")
+
+    return {
+        'fingerprint': _compute_assumption_fingerprint(assumptions),
+        'generated_at': datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+        'sources': sources,
+    }
 
 
 def _parse_date(date_value, field_name):
@@ -287,10 +409,19 @@ def create_app(config_name='development'):
         case = Case.query.get_or_404(case_id)
         data = request.json
 
+        assumptions = data.get('assumptions') or {}
+        violations = _validate_assumption_ranges(assumptions)
+        if violations:
+            return jsonify({
+                'success': False,
+                'error': 'Assumptions validation failed',
+                'violations': violations,
+            }), 400
+
         calculation = Calculation(
             case_id=case_id,
             description=data.get('description'),
-            assumptions=data.get('assumptions') or {},
+            assumptions=assumptions,
             results=data.get('results') or {},
             total_damages_pv=data.get('total_damages_pv'),
             past_damages=data.get('past_damages'),
@@ -1186,6 +1317,8 @@ def create_app(config_name='development'):
             assumptions = data.get('assumptions', {})
             meta = assumptions.get('meta', {})
             life_table = assumptions.get('lifeTable', {})
+            validation_notes = _validate_assumption_ranges(assumptions)
+            provenance = _build_provenance_metadata(assumptions)
 
             doc_notes = []
             if life_table:
@@ -1201,6 +1334,23 @@ def create_app(config_name='development'):
                 doc.add_paragraph(note)
             if doc_notes:
                 doc.add_paragraph()
+
+            doc.add_heading('Provenance & Validation', level=1)
+            doc.add_paragraph(f"Generated (UTC): {provenance['generated_at']}")
+            doc.add_paragraph(f"Assumptions fingerprint (SHA-256): {provenance['fingerprint']}")
+            if provenance['sources']:
+                doc.add_paragraph('Sources:')
+                for source in provenance['sources']:
+                    doc.add_paragraph(source, style='List Bullet')
+            validation_header = doc.add_paragraph()
+            validation_header.add_run('Validation status: ').bold = True
+            if validation_notes:
+                validation_header.add_run('Attention required').font.color.rgb = RGBColor(0xB0, 0x1E, 0x1E)
+                for warning in validation_notes:
+                    doc.add_paragraph(warning, style='List Bullet')
+            else:
+                validation_header.add_run('All monitored inputs fall within configured ranges.').font.color.rgb = RGBColor(0x22, 0x8B, 0x22)
+            doc.add_paragraph()
 
             # ==================== AEF BREAKDOWN TABLE ====================
             doc.add_heading('Adjusted Earnings Factor (AEF) Breakdown', level=1)
@@ -2773,6 +2923,8 @@ def create_app(config_name='development'):
             schedule = data.get('schedule', {})
             retirement_scenarios = data.get('retirementScenarios', [])
             sensitivity = data.get('sensitivityAnalysis', {})
+            validation_notes = _validate_assumption_ranges(assumptions)
+            provenance = _build_provenance_metadata(assumptions)
 
             wb = openpyxl.Workbook()
             base_sheet = wb.active
@@ -2955,6 +3107,26 @@ def create_app(config_name='development'):
                             continue
                         growth_delta = growth_range[j] if j < len(growth_range) else 0
                         ws.append([disc, growth_delta, cell.get('totalPV', 0), cell.get('pastDam', 0), cell.get('futurePV', 0)])
+
+            prov_sheet = wb.create_sheet('Provenance')
+            prov_sheet.append(['Generated (UTC)', provenance['generated_at']])
+            prov_sheet.append(['Assumptions fingerprint (SHA-256)', provenance['fingerprint']])
+            prov_sheet.append([])
+            prov_sheet.append(['Sources'])
+            if provenance['sources']:
+                for source in provenance['sources']:
+                    prov_sheet.append(['', source])
+            else:
+                prov_sheet.append(['', 'No explicit sources provided.'])
+            prov_sheet.append([])
+            prov_sheet.append(['Validation'])
+            if validation_notes:
+                for warning in validation_notes:
+                    prov_sheet.append(['', warning])
+            else:
+                prov_sheet.append(['', 'All monitored inputs fall within configured ranges.'])
+            prov_sheet.column_dimensions['A'].width = 36
+            prov_sheet.column_dimensions['B'].width = 120
 
             tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
             wb.save(tmp.name)
