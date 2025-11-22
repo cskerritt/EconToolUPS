@@ -1320,6 +1320,15 @@ def create_app(config_name='development'):
             validation_notes = _validate_assumption_ranges(assumptions)
             provenance = _build_provenance_metadata(assumptions)
 
+            schedule = data.get('schedule', {})
+            all_rows = schedule.get('rows', [])
+            use_ups_fringe = assumptions.get('butFor', {}).get('fringeMethod') == 'ups'
+            include_legals = assumptions.get('options', {}).get('includeLegals', True)
+            aef_on = assumptions.get('options', {}).get('includeAEF', False) and assumptions.get('aef', {}).get('mode') == 'on'
+            tinari_mode = aef_on
+            show_fringe = not aef_on
+
+            doc.add_heading('Assumptions Overview', level=1)
             doc_notes = []
             if life_table:
                 lt_source = life_table.get('source')
@@ -1335,7 +1344,7 @@ def create_app(config_name='development'):
             if doc_notes:
                 doc.add_paragraph()
 
-            doc.add_heading('Provenance & Validation', level=1)
+            doc.add_heading('Provenance & Validation', level=2)
             doc.add_paragraph(f"Generated (UTC): {provenance['generated_at']}")
             doc.add_paragraph(f"Assumptions fingerprint (SHA-256): {provenance['fingerprint']}")
             if provenance['sources']:
@@ -1361,7 +1370,6 @@ def create_app(config_name='development'):
             aef_data = assumptions.get('aef', {})
             horizon = assumptions.get('horizon', {})
             is_wd = meta.get('caseType') == 'wd'
-            aef_on = aef_data.get('mode') == 'on'
 
             # Create AEF table
             aef_table = doc.add_table(rows=1, cols=3)
@@ -1461,195 +1469,6 @@ def create_app(config_name='development'):
                        'Fringe benefits included via (1 + FB) multiplier in AEF' if aef_on else 'Fringes calculated and added separately when AEF is off')
 
             doc.add_paragraph()
-
-            # ==================== VISUAL SUMMARY ====================
-            doc.add_heading('Executive Visual Summary', level=1)
-            doc.add_paragraph('Charts and graphs to illustrate economic damages for jury presentation')
-            doc.add_paragraph()
-
-            schedule = data.get('schedule', {})
-            all_rows = schedule.get('rows', [])
-            use_ups_fringe = data.get('assumptions', {}).get('butFor', {}).get('fringeMethod') == 'ups'
-            include_legals = data.get('assumptions', {}).get('options', {}).get('includeLegals', True)
-            aef_on = data.get('assumptions', {}).get('options', {}).get('includeAEF', False) and \
-                     data.get('assumptions', {}).get('aef', {}).get('mode') == 'on'
-            tinari_mode = aef_on
-            show_fringe = not aef_on
-
-            # Chart 1: Damages Breakdown Pie Chart
-            try:
-                pie_chart = create_damages_breakdown_pie(totals, "Total Economic Damages Breakdown")
-                if pie_chart:
-                    doc.add_heading('Total Damages Summary', level=2)
-                    doc.add_picture(pie_chart, width=Inches(6))
-                    doc.add_paragraph()
-            except Exception as e:
-                print(f"Error creating damages pie chart: {e}")
-
-            # Chart 2: Annual Loss Bar Chart
-            try:
-                if all_rows:
-                    loss_chart = create_annual_loss_chart(all_rows, "Annual Economic Loss by Year")
-                    if loss_chart:
-                        doc.add_heading('Annual Economic Losses', level=2)
-                        doc.add_paragraph('This chart shows the economic loss for each year. Red bars indicate losses (but-for scenario exceeds actual earnings).')
-                        doc.add_picture(loss_chart, width=Inches(7))
-                        doc.add_paragraph()
-            except Exception as e:
-                print(f"Error creating annual loss chart: {e}")
-
-            # Chart 3: But-For vs Actual Earnings Comparison
-            try:
-                if all_rows:
-                    earnings_chart = create_earnings_comparison_chart(all_rows, "But-For vs Actual Earnings Comparison")
-                    if earnings_chart:
-                        doc.add_heading('Earnings Trajectory Comparison', level=2)
-                        doc.add_paragraph('Green line shows projected but-for earnings. Red line shows actual/post-injury earnings. Shaded area represents the economic loss.')
-                        doc.add_picture(earnings_chart, width=Inches(7))
-                        doc.add_paragraph()
-            except Exception as e:
-                print(f"Error creating earnings comparison chart: {e}")
-
-            # Chart 4: Cumulative Damages
-            try:
-                if all_rows:
-                    cumulative_chart = create_cumulative_damages_chart(all_rows, "Cumulative Economic Damages Over Time")
-                    if cumulative_chart:
-                        doc.add_heading('Cumulative Damages Over Time', level=2)
-                        doc.add_paragraph('This area chart shows how damages accumulate over time. Pink area represents past damages; blue area represents future damages (present value).')
-                        doc.add_picture(cumulative_chart, width=Inches(7))
-                        doc.add_paragraph()
-            except Exception as e:
-                print(f"Error creating cumulative damages chart: {e}")
-
-            # Chart 5: Fringe Benefits Breakdown
-            try:
-                if all_rows:
-                    fringe_chart = create_fringe_benefits_chart(all_rows, use_ups_fringe, "But-For Fringe Benefits Analysis")
-                    if fringe_chart:
-                        doc.add_heading('Fringe Benefits Breakdown', level=2)
-                        if use_ups_fringe:
-                            doc.add_paragraph('This chart shows the breakdown of UPS fringe benefits including Health & Welfare (bottom) and Pension (top) contributions.')
-                        else:
-                            doc.add_paragraph('This chart shows the total fringe benefits over time.')
-                        doc.add_picture(fringe_chart, width=Inches(7))
-                        doc.add_paragraph()
-            except Exception as e:
-                print(f"Error creating fringe benefits chart: {e}")
-
-            # Chart 6: Total Compensation Comparison (Stacked)
-            try:
-                if all_rows:
-                    comp_chart = create_total_compensation_comparison_chart(all_rows, "But-For vs Actual: Complete Compensation Package Comparison", include_legals)
-                    if comp_chart:
-                        doc.add_heading('Total Compensation Package Comparison', level=2)
-                        if include_legals:
-                            doc.add_paragraph('Side-by-side stacked comparison showing all components: earnings (base), fringe benefits (middle), and legally required benefits (top). Green bars show but-for scenario, red bars show actual/post-injury scenario.')
-                        else:
-                            doc.add_paragraph('Side-by-side stacked comparison showing earnings and fringe benefits. Legally required benefits are omitted per the toggle.')
-                        doc.add_picture(comp_chart, width=Inches(8))
-                        doc.add_paragraph()
-            except Exception as e:
-                print(f"Error creating total compensation chart: {e}")
-
-            # Chart 7: Age Progression
-            try:
-                if all_rows:
-                    age_chart = create_age_progression_chart(all_rows, "Economic Loss by Age Progression")
-                    if age_chart:
-                        doc.add_heading('Loss Trajectory by Age', level=2)
-                        doc.add_paragraph('Shows how economic loss changes as the evaluee ages, helping visualize the lifecycle impact of the injury.')
-                        doc.add_picture(age_chart, width=Inches(7))
-                        doc.add_paragraph()
-            except Exception as e:
-                print(f"Error creating age progression chart: {e}")
-
-            # Chart 8: Survival Probability
-            try:
-                if all_rows:
-                    survival_chart = create_survival_probability_chart(all_rows, "Survival Probability Analysis")
-                    if survival_chart:
-                        doc.add_heading('Survival Probability Over Time', level=2)
-                        doc.add_paragraph('Shows the probability of survival at each age based on mortality tables. This is used to weight future damages calculations.')
-                        doc.add_picture(survival_chart, width=Inches(7))
-                        doc.add_paragraph()
-            except Exception as e:
-                print(f"Error creating survival probability chart: {e}")
-
-            # Chart 9: PV Discount Impact (only when discounting is on)
-            try:
-                if all_rows and include_discounting:
-                    pv_chart = create_pv_discount_impact_chart(all_rows, "Impact of Present Value Discounting on Future Damages")
-                    if pv_chart:
-                        doc.add_heading('Present Value Discount Analysis', level=2)
-                        doc.add_paragraph('Compares undiscounted future losses (orange) to their present value (green). The gray shaded area shows the discount amount, representing the time value of money.')
-                        doc.add_picture(pv_chart, width=Inches(7))
-                        doc.add_paragraph()
-            except Exception as e:
-                print(f"Error creating PV discount chart: {e}")
-
-            # Chart 10: Past vs Future Distribution
-            try:
-                if all_rows:
-                    past_future_chart = create_past_vs_future_chart(all_rows, "Past vs Future Damages Year-by-Year Distribution")
-                    if past_future_chart:
-                        doc.add_heading('Past vs Future Damages Distribution', level=2)
-                        doc.add_paragraph('Side-by-side comparison showing how damages are split between past (already incurred) and future (projected) for each year.')
-                        doc.add_picture(past_future_chart, width=Inches(7))
-                        doc.add_paragraph()
-            except Exception as e:
-                print(f"Error creating past vs future chart: {e}")
-
-            # Chart 11: Tax Impact
-            try:
-                if all_rows:
-                    tax_chart = create_tax_impact_chart(all_rows, "Tax Impact on But-For Earnings")
-                    if tax_chart:
-                        doc.add_heading('Tax Reduction Analysis', level=2)
-                        doc.add_paragraph('Shows but-for gross earnings with tax impact overlay. Green represents after-tax take-home earnings, red shows the portion lost to taxes.')
-                        doc.add_picture(tax_chart, width=Inches(7))
-                        doc.add_paragraph()
-            except Exception as e:
-                print(f"Error creating tax impact chart: {e}")
-
-            # Chart 12: Legally Required Benefits
-            try:
-                if all_rows and include_legals:
-                    legals_chart = create_legally_required_benefits_chart(all_rows, "Legally Required Benefits Comparison")
-                    if legals_chart:
-                        doc.add_heading('Legally Required Benefits Analysis', level=2)
-                        doc.add_paragraph('Compares legally required benefits (Social Security, Medicare, unemployment insurance, etc.) between but-for and actual scenarios. Shaded area shows the difference.')
-                        doc.add_picture(legals_chart, width=Inches(7))
-                        doc.add_paragraph()
-            except Exception as e:
-                print(f"Error creating legally required benefits chart: {e}")
-
-            # Chart 13: Loss Percentage
-            try:
-                if all_rows:
-                    loss_pct_chart = create_loss_percentage_chart(all_rows, "Economic Loss as Percentage of But-For Earnings")
-                    if loss_pct_chart:
-                        doc.add_heading('Loss Percentage Analysis', level=2)
-                        doc.add_paragraph('Shows annual economic loss as a percentage of but-for earnings. Color-coded: Green (<50% loss), Orange (50-75% loss), Red (>75% loss). Dashed lines mark 50% and 75% thresholds.')
-                        doc.add_picture(loss_pct_chart, width=Inches(7))
-                        doc.add_paragraph()
-            except Exception as e:
-                print(f"Error creating loss percentage chart: {e}")
-
-            # Chart 14: UPS Fringe Breakdown (if applicable)
-            try:
-                if all_rows and use_ups_fringe:
-                    ups_chart = create_ups_fringe_breakdown_chart(all_rows, "UPS Fringe Benefits: Health & Welfare vs Pension")
-                    if ups_chart:
-                        doc.add_heading('UPS-Specific Fringe Benefits Breakdown', level=2)
-                        doc.add_paragraph('Detailed side-by-side comparison of UPS Health & Welfare contributions and Pension contributions by year.')
-                        doc.add_picture(ups_chart, width=Inches(7))
-                        doc.add_paragraph()
-            except Exception as e:
-                print(f"Error creating UPS fringe breakdown chart: {e}")
-
-            # Add page break before detailed tables
-            doc.add_page_break()
 
             def add_formula_note(text):
                 note = doc.add_paragraph(f"Formula: {text}")
@@ -2088,41 +1907,15 @@ def create_app(config_name='development'):
                 else:
                     qa_para.add_run(f"QA Warning: Sum of YOY PV (${qa_sum:,.2f}) differs from scenario Future PV (${totals_context.get('futurePV', 0):,.2f}).").italic = True
                 doc.add_paragraph()
-            # Add tables with clear labels and descriptions
-            schedule = data.get('schedule', {})
-
-            # Add section heading for detailed schedules
-            doc.add_heading('DETAILED EARNINGS AND LOSS SCHEDULES', level=1)
-            doc.add_paragraph('Complete year-by-year breakdown of all earnings, benefits, and economic losses')
-            doc.add_paragraph()
-
-            # Tinari-style summary when AEF is on
-            if aef_on:
+            # Add tables with clear labels and descriptions in a simplified order
+            doc.add_heading('Tinari Tables', level=1)
+            if tinari_mode:
                 assumptions_for_tinari = data.get('assumptions', {}).copy()
                 assumptions_for_tinari['totals'] = totals
                 add_tinari_table(schedule.get('rowsPre', []), schedule.get('rowsPost', []), assumptions_for_tinari)
-
-            if schedule.get('rowsPre'):
-                add_schedule_table(
-                    'TABLE 1: Pre-Injury Period (Incident to Report Date)',
-                    schedule['rowsPre'],
-                    use_ups_fringe,
-                    aef_on,
-                    include_legals,
-                    include_discounting,
-                    'This table shows the year-by-year economic analysis for the period from the date of incident through the report date. All losses in this period are classified as past damages.'
-                )
-
-            if schedule.get('rowsPost'):
-                add_schedule_table(
-                    'TABLE 2: Post-Injury Period (Report Date to Retirement)',
-                    schedule['rowsPost'],
-                    use_ups_fringe,
-                    aef_on,
-                    include_legals,
-                    include_discounting,
-                    'This table shows the year-by-year economic analysis from the report date through retirement. Losses are split between past (if before today) and future (discounted to present value).'
-                )
+            else:
+                doc.add_paragraph('Tinari layout tables appear when AEF is ON. Enable AEF to view the Tinari summary tables.')
+            doc.add_paragraph()
 
             # Add Retirement Scenarios table
             # Add Retirement Scenarios tables and visuals
@@ -2436,17 +2229,6 @@ def create_app(config_name='development'):
 
                     doc.add_paragraph()
 
-                    # Add sensitivity analysis heatmap
-                    try:
-                        sens_heatmap = create_sensitivity_heatmap(sensitivity)
-                        if sens_heatmap:
-                            doc.add_heading('Sensitivity Analysis Visual Heatmap', level=2)
-                            doc.add_paragraph('This heatmap shows how total present value changes across different combinations of discount and growth rates. Green indicates higher values, red indicates lower values.')
-                            doc.add_picture(sens_heatmap, width=Inches(7))
-                            doc.add_paragraph()
-                    except Exception as e:
-                        print(f"Error creating sensitivity heatmap: {e}")
-
                     # Add detailed tables for each sensitivity scenario
                     if not tinari_mode:
                         doc.add_heading('TABLE 5: Detailed Sensitivity Scenarios (Year-by-Year)', level=2)
@@ -2628,7 +2410,7 @@ def create_app(config_name='development'):
             doc.add_paragraph()
 
             # Additional Table 1: Component Breakdown (But-For Components Only)
-            if all_rows:
+            if not tinari_mode and all_rows:
                 try:
                     doc.add_heading('TABLE 7: But-For Earnings Components Breakdown', level=2)
                     doc.add_paragraph('Detailed breakdown of all but-for earning components by year').italic = True
@@ -2717,7 +2499,7 @@ def create_app(config_name='development'):
                     print(f"Error adding component breakdown table: {e}")
 
             # Additional Table 2: Actual Earnings Components Breakdown
-            if all_rows:
+            if not tinari_mode and all_rows:
                 try:
                     doc.add_heading('TABLE 8: Actual Earnings Components Breakdown', level=2)
                     doc.add_paragraph('Detailed breakdown of all actual/post-injury earning components by year').italic = True
@@ -2773,7 +2555,7 @@ def create_app(config_name='development'):
                     print(f"Error adding actual components table: {e}")
 
             # Additional Table 3: Present Value and Survival Analysis
-            if all_rows and include_discounting:
+            if not tinari_mode and all_rows and include_discounting:
                 try:
                     doc.add_heading('TABLE 9: Present Value and Survival Probability Analysis', level=2)
                     doc.add_paragraph('Shows the impact of present value discounting and survival probabilities on future damages').italic = True
@@ -2813,12 +2595,12 @@ def create_app(config_name='development'):
                     doc.add_paragraph()
                 except Exception as e:
                     print(f"Error adding PV/survival table: {e}")
-            elif all_rows and not include_discounting:
+            elif not tinari_mode and all_rows and not include_discounting:
                 doc.add_heading('TABLE 9: Present Value and Survival Probability Analysis', level=2)
                 doc.add_paragraph('Present value discounting is OFF, so this table is omitted.').italic = True
 
             # Additional Table 5: Loss Components Comparison
-            if all_rows:
+            if not tinari_mode and all_rows:
                 try:
                     doc.add_heading('TABLE 11: Annual Loss Components Comparison', level=2)
                     doc.add_paragraph('Compares but-for total compensation to actual total compensation to show annual loss').italic = True
@@ -2864,7 +2646,83 @@ def create_app(config_name='development'):
                     doc.add_paragraph()
                 except Exception as e:
                     print(f"Error adding loss components table: {e}")
-    
+
+            # Move all visuals to the end for easier reading
+            doc.add_page_break()
+            doc.add_heading('Executive Visual Summary', level=1)
+            doc.add_paragraph('Charts and graphs appear after all tables for a simpler, story-first read.').italic = True
+            doc.add_paragraph()
+
+            # Chart 1: Damages Breakdown Pie Chart
+            try:
+                pie_chart = create_damages_breakdown_pie(totals, "Total Economic Damages Breakdown")
+                if pie_chart:
+                    doc.add_heading('Total Damages Summary', level=2)
+                    doc.add_picture(pie_chart, width=Inches(6))
+                    doc.add_paragraph()
+            except Exception as e:
+                print(f"Error creating damages pie chart: {e}")
+
+            # Chart 2: Annual Loss Bar Chart
+            try:
+                if all_rows:
+                    loss_chart = create_annual_loss_chart(all_rows, "Annual Economic Loss by Year")
+                    if loss_chart:
+                        doc.add_heading('Annual Economic Losses', level=2)
+                        doc.add_paragraph('This chart shows the economic loss for each year. Red bars indicate losses (but-for scenario exceeds actual earnings).')
+                        doc.add_picture(loss_chart, width=Inches(7))
+                        doc.add_paragraph()
+            except Exception as e:
+                print(f"Error creating annual loss chart: {e}")
+
+            # Chart 3: But-For vs Actual Earnings Comparison
+            try:
+                if all_rows:
+                    earnings_chart = create_earnings_comparison_chart(all_rows, "But-For vs Actual Earnings Comparison")
+                    if earnings_chart:
+                        doc.add_heading('Earnings Trajectory Comparison', level=2)
+                        doc.add_paragraph('Green line shows projected but-for earnings. Red line shows actual/post-injury earnings. Shaded area represents the economic loss.')
+                        doc.add_picture(earnings_chart, width=Inches(7))
+                        doc.add_paragraph()
+            except Exception as e:
+                print(f"Error creating earnings comparison chart: {e}")
+
+            # Chart 4: Cumulative Damages
+            try:
+                if all_rows:
+                    cumulative_chart = create_cumulative_damages_chart(all_rows, "Cumulative Economic Damages Over Time")
+                    if cumulative_chart:
+                        doc.add_heading('Cumulative Damages Over Time', level=2)
+                        doc.add_paragraph('This area chart shows how damages accumulate over time. Pink area represents past damages; blue area represents future damages (present value).')
+                        doc.add_picture(cumulative_chart, width=Inches(7))
+                        doc.add_paragraph()
+            except Exception as e:
+                print(f"Error creating cumulative damages chart: {e}")
+
+            # Chart 5: Sensitivity Heatmap (visual only)
+            try:
+                if include_discounting and sensitivity and sensitivity.get('results'):
+                    sens_heatmap = create_sensitivity_heatmap(sensitivity)
+                    if sens_heatmap:
+                        doc.add_heading('Sensitivity Analysis Visual Heatmap', level=2)
+                        doc.add_paragraph('Total present value across the discount/growth grid; brighter green = higher damages, red = lower.')
+                        doc.add_picture(sens_heatmap, width=Inches(7))
+                        doc.add_paragraph()
+            except Exception as e:
+                print(f"Error creating sensitivity heatmap: {e}")
+
+            # Chart 6: UPS Fringe Breakdown (if applicable)
+            try:
+                if all_rows and use_ups_fringe:
+                    ups_chart = create_ups_fringe_breakdown_chart(all_rows, "UPS Fringe Benefits: Health & Welfare vs Pension")
+                    if ups_chart:
+                        doc.add_heading('UPS-Specific Fringe Benefits Breakdown', level=2)
+                        doc.add_paragraph('Detailed side-by-side comparison of UPS Health & Welfare contributions and Pension contributions by year.')
+                        doc.add_picture(ups_chart, width=Inches(7))
+                        doc.add_paragraph()
+            except Exception as e:
+                print(f"Error creating UPS fringe breakdown chart: {e}")
+
             # Jury-friendly summary charts (bottom of report, one simple graphic each)
             try:
                 doc.add_heading('Plain-English Jury Visuals', level=1)
