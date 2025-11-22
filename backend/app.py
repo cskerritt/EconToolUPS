@@ -24,8 +24,25 @@ from models import db, init_db, Evaluee, Case, Calculation
 from config import config
 
 
+def _parse_date(date_value, field_name):
+    """Convert an ISO date string to a ``datetime.date`` while validating input."""
+
+    if not date_value:
+        return None
+
+    try:
+        return datetime.fromisoformat(date_value).date()
+    except ValueError:
+        raise ValueError(f"Invalid date format for '{field_name}'. Use ISO format YYYY-MM-DD.")
+
+
+def _handle_integrity_error(error: IntegrityError):
+    db.session.rollback()
+    return jsonify({'success': False, 'error': 'Data integrity error', 'details': str(error.orig)}), 400
+
+
 def create_app(config_name='development'):
-    """Create and configure Flask app"""
+    """Create and configure Flask app."""
     app = Flask(__name__)
 
     # Load config
@@ -77,7 +94,10 @@ def create_app(config_name='development'):
 
         evaluee = Evaluee(profile_name=profile_name)
         db.session.add(evaluee)
-        db.session.commit()
+        try:
+            db.session.commit()
+        except IntegrityError as exc:  # Defensive against race-conditions
+            return _handle_integrity_error(exc)
 
         return jsonify({
             'success': True,
@@ -103,7 +123,10 @@ def create_app(config_name='development'):
             evaluee.profile_name = profile_name
 
         evaluee.updated_at = datetime.utcnow()
-        db.session.commit()
+        try:
+            db.session.commit()
+        except IntegrityError as exc:
+            return _handle_integrity_error(exc)
 
         return jsonify({
             'success': True,
@@ -153,21 +176,27 @@ def create_app(config_name='development'):
         evaluee = Evaluee.query.get_or_404(evaluee_id)
         data = request.json
 
-        case = Case(
-            evaluee_id=evaluee_id,
-            case_name=data.get('case_name', 'Untitled Case'),
-            case_type=data.get('case_type', 'pi'),
-            date_of_birth=datetime.fromisoformat(data['date_of_birth']) if data.get('date_of_birth') else None,
-            incident_date=datetime.fromisoformat(data['incident_date']) if data.get('incident_date') else None,
-            valuation_date=datetime.fromisoformat(data['valuation_date']) if data.get('valuation_date') else None,
-            wle_years=data.get('wle_years'),
-            yfs_years=data.get('yfs_years'),
-            le_years=data.get('le_years'),
-            assumptions=data.get('assumptions')
-        )
+        try:
+            case = Case(
+                evaluee_id=evaluee_id,
+                case_name=data.get('case_name', 'Untitled Case').strip() or 'Untitled Case',
+                case_type=data.get('case_type', 'pi'),
+                date_of_birth=_parse_date(data.get('date_of_birth'), 'date_of_birth'),
+                incident_date=_parse_date(data.get('incident_date'), 'incident_date'),
+                valuation_date=_parse_date(data.get('valuation_date'), 'valuation_date'),
+                wle_years=data.get('wle_years'),
+                yfs_years=data.get('yfs_years'),
+                le_years=data.get('le_years'),
+                assumptions=data.get('assumptions') or {},
+            )
+        except ValueError as exc:
+            return jsonify({'success': False, 'error': str(exc)}), 400
 
         db.session.add(case)
-        db.session.commit()
+        try:
+            db.session.commit()
+        except IntegrityError as exc:
+            return _handle_integrity_error(exc)
 
         return jsonify({
             'success': True,
@@ -180,30 +209,36 @@ def create_app(config_name='development'):
         case = Case.query.get_or_404(case_id)
         data = request.json
 
-        # Update fields if provided
-        if 'case_name' in data:
-            case.case_name = data['case_name']
-        if 'case_type' in data:
-            case.case_type = data['case_type']
-        if 'date_of_birth' in data and data['date_of_birth']:
-            case.date_of_birth = datetime.fromisoformat(data['date_of_birth'])
-        if 'incident_date' in data and data['incident_date']:
-            case.incident_date = datetime.fromisoformat(data['incident_date'])
-        if 'valuation_date' in data and data['valuation_date']:
-            case.valuation_date = datetime.fromisoformat(data['valuation_date'])
-        if 'wle_years' in data:
-            case.wle_years = data['wle_years']
-        if 'yfs_years' in data:
-            case.yfs_years = data['yfs_years']
-        if 'le_years' in data:
-            case.le_years = data['le_years']
-        if 'assumptions' in data:
-            case.assumptions = data['assumptions']
-        if 'latest_calculation' in data:
-            case.latest_calculation = data['latest_calculation']
+        try:
+            # Update fields if provided
+            if 'case_name' in data:
+                case.case_name = data['case_name'].strip() or case.case_name
+            if 'case_type' in data:
+                case.case_type = data['case_type']
+            if 'date_of_birth' in data:
+                case.date_of_birth = _parse_date(data.get('date_of_birth'), 'date_of_birth')
+            if 'incident_date' in data:
+                case.incident_date = _parse_date(data.get('incident_date'), 'incident_date')
+            if 'valuation_date' in data:
+                case.valuation_date = _parse_date(data.get('valuation_date'), 'valuation_date')
+            if 'wle_years' in data:
+                case.wle_years = data['wle_years']
+            if 'yfs_years' in data:
+                case.yfs_years = data['yfs_years']
+            if 'le_years' in data:
+                case.le_years = data['le_years']
+            if 'assumptions' in data and isinstance(data.get('assumptions'), dict):
+                case.assumptions = data['assumptions']
+            if 'latest_calculation' in data and isinstance(data.get('latest_calculation'), dict):
+                case.latest_calculation = data['latest_calculation']
+        except ValueError as exc:
+            return jsonify({'success': False, 'error': str(exc)}), 400
 
         case.updated_at = datetime.utcnow()
-        db.session.commit()
+        try:
+            db.session.commit()
+        except IntegrityError as exc:
+            return _handle_integrity_error(exc)
 
         return jsonify({
             'success': True,
@@ -255,8 +290,8 @@ def create_app(config_name='development'):
         calculation = Calculation(
             case_id=case_id,
             description=data.get('description'),
-            assumptions=data.get('assumptions', {}),
-            results=data.get('results', {}),
+            assumptions=data.get('assumptions') or {},
+            results=data.get('results') or {},
             total_damages_pv=data.get('total_damages_pv'),
             past_damages=data.get('past_damages'),
             future_damages_pv=data.get('future_damages_pv')
@@ -265,10 +300,13 @@ def create_app(config_name='development'):
         db.session.add(calculation)
 
         # Update case's latest calculation
-        case.latest_calculation = data.get('results')
+        case.latest_calculation = data.get('results') or {}
         case.updated_at = datetime.utcnow()
 
-        db.session.commit()
+        try:
+            db.session.commit()
+        except IntegrityError as exc:
+            return _handle_integrity_error(exc)
 
         return jsonify({
             'success': True,
@@ -297,14 +335,20 @@ def create_app(config_name='development'):
             return jsonify({'success': False, 'error': 'Query parameter required'}), 400
 
         # Search evaluees
-        evaluees = Evaluee.query.filter(
-            Evaluee.profile_name.ilike(f'%{query}%')
-        ).all()
+        evaluees = (
+            Evaluee.query.filter(Evaluee.profile_name.ilike(f'%{query}%'))
+            .order_by(Evaluee.profile_name.asc())
+            .limit(25)
+            .all()
+        )
 
         # Search cases
-        cases = Case.query.filter(
-            Case.case_name.ilike(f'%{query}%')
-        ).all()
+        cases = (
+            Case.query.filter(Case.case_name.ilike(f'%{query}%'))
+            .order_by(Case.updated_at.desc())
+            .limit(25)
+            .all()
+        )
 
         return jsonify({
             'success': True,
