@@ -1281,37 +1281,37 @@ def create_app(config_name='development'):
             section.top_margin = Inches(0.5)
             section.bottom_margin = Inches(0.5)
 
-            # Add title
+            # ==================== TITLE BLOCK / CASE INFO ====================
             title = doc.add_paragraph()
             title_run = title.add_run('But-For Damages Analysis Report')
             title_run.bold = True
-            title_run.font.size = Pt(16)
+            title_run.font.size = Pt(18)
             title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
-            # Add case information
-            case_name = data.get('assumptions', {}).get('meta', {}).get('caseName', 'Unnamed Case')
-            doc.add_paragraph(f"Case: {case_name}")
-            doc.add_paragraph(f"Report Date: {datetime.now().strftime('%B %d, %Y')}")
             doc.add_paragraph()
 
-            # Add summary totals
-            totals = data.get('schedule', {}).get('totals', {})
-            summary = doc.add_paragraph()
-            summary.add_run('Summary Totals\n').bold = True
-            include_discounting = data.get('assumptions', {}).get('options', {}).get('includeDiscounting', True)
-            future_nominal_total = sum(r.get('futurePart', 0) for r in data.get('schedule', {}).get('rows', []) or [])
-            if include_discounting:
-                summary.add_run(f"Total Present Value: ${totals.get('totalPV', 0):,.2f}\n")
-                summary.add_run(f"Past Damages: ${totals.get('pastDam', 0):,.2f}\n")
-                summary.add_run(f"Future PV: ${totals.get('futurePV', 0):,.2f}")
-            else:
-                nominal_total = (totals.get('pastDam', 0) or 0) + future_nominal_total
-                summary.add_run(f"Total (Nominal): ${nominal_total:,.2f}\n")
-                summary.add_run(f"Past Damages: ${totals.get('pastDam', 0):,.2f}\n")
-                summary.add_run(f"Future (Nominal): ${future_nominal_total:,.2f}")
-            active_scenario = data.get('activeScenario', {})
-            if active_scenario.get('name'):
-                summary.add_run(f"\nScenario: {active_scenario['name']}")
+            # Case information block
+            case_name = data.get('assumptions', {}).get('meta', {}).get('caseName', 'Unnamed Case')
+            dates = data.get('assumptions', {}).get('dates', {})
+            dob = dates.get('dob', '')
+            valuation_date = dates.get('valuation', '')
+            
+            case_info = doc.add_paragraph()
+            case_info.add_run('Case: ').bold = True
+            case_info.add_run(case_name)
+            if dob:
+                case_info.add_run('\nDate of Birth: ').bold = True
+                try:
+                    dob_dt = datetime.fromisoformat(dob).date()
+                    case_info.add_run(dob_dt.strftime('%B %d, %Y'))
+                except:
+                    case_info.add_run(dob)
+            if valuation_date:
+                case_info.add_run('\nValuation Date: ').bold = True
+                try:
+                    val_dt = datetime.fromisoformat(valuation_date).date()
+                    case_info.add_run(val_dt.strftime('%B %d, %Y'))
+                except:
+                    case_info.add_run(valuation_date)
             doc.add_paragraph()
 
             assumptions = data.get('assumptions', {})
@@ -1327,8 +1327,256 @@ def create_app(config_name='development'):
             aef_on = assumptions.get('options', {}).get('includeAEF', False) and assumptions.get('aef', {}).get('mode') == 'on'
             tinari_mode = aef_on
             show_fringe = not aef_on
+            include_discounting = data.get('assumptions', {}).get('options', {}).get('includeDiscounting', True)
+            totals = data.get('schedule', {}).get('totals', {})
+            retirement_scenarios = data.get('retirementScenarios', [])
 
-            doc.add_heading('Assumptions Overview', level=1)
+            # ==================== EXECUTIVE DAMAGES SUMMARY ====================
+            doc.add_page_break()
+            doc.add_heading('Executive Damages Summary', level=1)
+            
+            # Create summary table
+            summary_table = doc.add_table(rows=1, cols=2)
+            summary_table.style = 'Light Grid Accent 1'
+            hdr_cells = summary_table.rows[0].cells
+            hdr_cells[0].text = 'Item'
+            hdr_cells[1].text = 'Amount'
+            for cell in hdr_cells:
+                for paragraph in cell.paragraphs:
+                    for run in paragraph.runs:
+                        run.font.bold = True
+                        run.font.size = Pt(11)
+            
+            # Format valuation date for display
+            val_date_str = 'valuation date'
+            if valuation_date:
+                try:
+                    val_dt = datetime.fromisoformat(valuation_date).date()
+                    val_date_str = val_dt.strftime('%m/%d/%Y')
+                except:
+                    val_date_str = valuation_date
+            
+            # Add rows
+            past_dam = totals.get('pastDam', 0) or 0
+            future_pv = totals.get('futurePV', 0) or 0
+            future_nominal = sum(r.get('futurePart', 0) for r in all_rows or [])
+            
+            if include_discounting:
+                amount_label = f" (Present value as of {val_date_str})"
+            else:
+                amount_label = " (Nominal, undiscounted)"
+            
+            # Past economic loss
+            row = summary_table.add_row()
+            row.cells[0].text = f'Past economic loss (to {val_date_str})'
+            row.cells[1].text = f"${past_dam:,.2f}"
+            
+            # Find base scenario (retire at 57) and alternative scenarios
+            base_scenario = None
+            alt_scenarios = []
+            for scenario in retirement_scenarios:
+                if not isinstance(scenario, dict):
+                    continue
+                retire_age = scenario.get('retireAge', 0)
+                if retire_age == 57 or (not base_scenario and retire_age < 60):
+                    base_scenario = scenario
+                elif retire_age in [65, 67, 70]:
+                    alt_scenarios.append(scenario)
+            
+            # If no scenarios, use main schedule totals
+            if base_scenario:
+                base_totals = base_scenario.get('totals', {})
+                base_future = base_totals.get('futurePV', 0) if include_discounting else sum(r.get('futurePart', 0) for r in base_scenario.get('schedule', {}).get('rows', []) or [])
+                base_total = (base_totals.get('pastDam', 0) or 0) + (base_totals.get('futurePV', 0) if include_discounting else base_future)
+            else:
+                base_future = future_pv if include_discounting else future_nominal
+                base_total = past_dam + (future_pv if include_discounting else future_nominal)
+            
+            # Future economic loss - retire 57
+            row = summary_table.add_row()
+            row.cells[0].text = f'Future economic loss – retire 57{amount_label}'
+            if base_scenario:
+                row.cells[1].text = f"${base_future:,.2f}"
+            else:
+                row.cells[1].text = f"${base_future:,.2f}"
+            
+            # Total economic loss - retire 57
+            row = summary_table.add_row()
+            row.cells[0].text = f'Total economic loss – retire 57{amount_label}'
+            row.cells[1].text = f"${base_total:,.2f}"
+            
+            # Alternative retirement scenarios
+            for scenario in sorted(alt_scenarios, key=lambda x: x.get('retireAge', 0)):
+                retire_age = scenario.get('retireAge', 0)
+                scenario_totals = scenario.get('totals', {})
+                scenario_future = scenario_totals.get('futurePV', 0) if include_discounting else sum(r.get('futurePart', 0) for r in scenario.get('schedule', {}).get('rows', []) or [])
+                scenario_total = (scenario_totals.get('pastDam', 0) or 0) + (scenario_totals.get('futurePV', 0) if include_discounting else scenario_future)
+                
+                row = summary_table.add_row()
+                row.cells[0].text = f'Alternative retirement {retire_age} – total{amount_label}'
+                row.cells[1].text = f"${scenario_total:,.2f}"
+            
+            doc.add_paragraph()
+            doc.add_paragraph('Base scenario is retirement at 57; other ages are presented as sensitivity cases.')
+            
+            # Add discounting status statement
+            doc.add_paragraph()
+            if include_discounting:
+                discount = assumptions.get('discount', {})
+                discount_rate = (discount.get('ndr') if discount.get('method') == 'ndr' else discount.get('rate', 0)) or 0
+                doc.add_paragraph(f"Present value discounting is ON ({discount_rate*100:.2f}% rate). All future values shown are present value as of {val_date_str}.")
+            else:
+                doc.add_paragraph(f"Present value discounting is OFF. All future values shown are nominal (undiscounted).")
+            doc.add_paragraph()
+            
+            # ==================== WHAT DRIVES THE NUMBERS ====================
+            doc.add_heading('What Drives the Numbers', level=1)
+            
+            # AEF explanation
+            aef_data = assumptions.get('aef', {})
+            aef_factor = aef_data.get('factor', 1) if aef_on else 1
+            doc.add_paragraph(
+                'The Adjusted Earnings Factor (AEF) accounts for work-life probability, unemployment risk, taxes, and fringe benefits. '
+                'It adjusts the base wage to reflect the expected annual earnings over the work-life period. '
+            )
+            if aef_on and abs(aef_factor - 1.0) < 0.02:
+                doc.add_paragraph(
+                    'Although taxes and unemployment reduce earnings, the large UPS fringe package more than offsets those reductions, '
+                    'yielding an AEF very close to one.'
+                )
+            
+            # UPS pay/fringe structure
+            if use_ups_fringe:
+                doc.add_paragraph(
+                    'UPS compensation includes base wages plus substantial fringe benefits: Health & Welfare contributions and Pension accruals. '
+                    'These benefits are contractually specified and increase annually according to the UPS National Master Agreement.'
+                )
+            else:
+                but_for_data = assumptions.get('butFor', {})
+                fringe_pct = but_for_data.get('fringePct', 0) or aef_data.get('fringePct', 0)
+                doc.add_paragraph(
+                    f'Fringe benefits are calculated as {fringe_pct*100:.1f}% of base wages, representing employer contributions for health insurance, '
+                    'retirement, and other benefits.'
+                )
+            
+            # Key assumptions
+            doc.add_paragraph('Key assumptions include:')
+            growth_method = assumptions.get('butFor', {}).get('growthMethod', 'fixed')
+            if growth_method == 'fixed':
+                growth_rate = assumptions.get('butFor', {}).get('growth', 0)
+                doc.add_paragraph(f'• Wage growth: {growth_rate*100:.2f}% annually', style='List Bullet')
+            elif growth_method == 'ups':
+                doc.add_paragraph('• Wage growth: UPS Contract Rates (2023-2028)', style='List Bullet')
+            else:
+                doc.add_paragraph('• Wage growth: Custom per-year rates', style='List Bullet')
+            
+            if include_discounting:
+                discount = assumptions.get('discount', {})
+                discount_rate = (discount.get('ndr') if discount.get('method') == 'ndr' else discount.get('rate', 0)) or 0
+                doc.add_paragraph(f'• Discount rate: {discount_rate*100:.2f}% (to convert future losses to present value)', style='List Bullet')
+            
+            if life_table:
+                lt_source = life_table.get('source', 'CDC United States Life Tables, 2023')
+                lt_population = life_table.get('population', 'combined').title()
+                doc.add_paragraph(f'• Life table: {lt_source} [{lt_population}] (for survival probabilities)', style='List Bullet')
+            
+            # Tax and unemployment
+            if aef_on:
+                ur = aef_data.get('UR', 0)
+                urf = aef_data.get('URF', 0)
+                tlf = aef_data.get('TLF', 0)
+                tls = aef_data.get('TLS', 0)
+                doc.add_paragraph(
+                    f'• Unemployment: {ur*100:.2f}% annual probability, {urf*100:.0f}% offset by benefits', style='List Bullet'
+                )
+                doc.add_paragraph(
+                    f'• Taxes: {tlf*100:.0f}% federal, {tls*100:.0f}% state', style='List Bullet'
+                )
+            
+            # Loss percentage reference
+            doc.add_paragraph()
+            doc.add_paragraph(
+                'Even with post-injury employment, the claimant loses approximately 65–71 percent of their compensation each year '
+                '(see TABLE 11 in Appendix F for detailed annual loss percentages).'
+            )
+            doc.add_paragraph()
+            
+            # ==================== CORE CHARTS (4 PRIMARY VISUALS) ====================
+            doc.add_page_break()
+            doc.add_heading('Key Visualizations', level=1)
+            
+            # Calculate loss percentage for declarative caption
+            loss_pct_min = 100
+            loss_pct_max = 0
+            if all_rows:
+                for row_data in all_rows:
+                    bf_total = (row_data.get('bfAdj', 0) + row_data.get('bfFringe', 0) +
+                               row_data.get('bfLegals', 0))
+                    if bf_total > 0:
+                        loss_pct = (row_data.get('loss', 0) / bf_total * 100)
+                        if loss_pct > 0:
+                            loss_pct_min = min(loss_pct_min, loss_pct)
+                            loss_pct_max = max(loss_pct_max, loss_pct)
+            
+            # Chart 1: Annual Economic Losses (bars)
+            try:
+                if all_rows:
+                    loss_chart = create_annual_loss_chart(all_rows, "Annual Economic Loss by Year")
+                    if loss_chart:
+                        doc.add_heading('Annual Economic Losses', level=2)
+                        if loss_pct_min < 100 and loss_pct_max > 0:
+                            doc.add_paragraph(
+                                f'Annual economic loss averages roughly {loss_pct_min:.0f}–{loss_pct_max:.0f} percent of but-for compensation over the worklife. '
+                                'This chart shows the economic loss for each year.'
+                            )
+                        else:
+                            doc.add_paragraph('This chart shows the economic loss for each year.')
+                        doc.add_picture(loss_chart, width=Inches(7))
+                        doc.add_paragraph()
+            except Exception as e:
+                print(f"Error creating annual loss chart: {e}")
+            
+            # Chart 2: Cumulative Damages Over Time
+            try:
+                if all_rows:
+                    cumulative_chart = create_cumulative_damages_chart(all_rows, "Cumulative Economic Damages Over Time")
+                    if cumulative_chart:
+                        doc.add_heading('Cumulative Damages Over Time', level=2)
+                        doc.add_paragraph('This area chart shows how damages accumulate over time. Pink area represents past damages; blue area represents future damages (present value).')
+                        doc.add_picture(cumulative_chart, width=Inches(7))
+                        doc.add_paragraph()
+            except Exception as e:
+                print(f"Error creating cumulative damages chart: {e}")
+            
+            # Chart 3: But-For vs Actual Total Compensation
+            try:
+                if all_rows:
+                    earnings_chart = create_earnings_comparison_chart(all_rows, "But-For vs Actual Earnings Comparison")
+                    if earnings_chart:
+                        doc.add_heading('But-For vs Actual Total Compensation', level=2)
+                        doc.add_paragraph('Green line shows projected but-for total compensation. Red line shows actual/post-injury total compensation. Shaded area represents the economic loss.')
+                        doc.add_picture(earnings_chart, width=Inches(7))
+                        doc.add_paragraph()
+            except Exception as e:
+                print(f"Error creating earnings comparison chart: {e}")
+            
+            # Chart 4: Retirement Scenario Comparison
+            try:
+                if retirement_scenarios and len(retirement_scenarios) > 1:
+                    ret_chart = create_retirement_scenarios_chart(retirement_scenarios, "Retirement Age Scenarios Comparison")
+                    if ret_chart:
+                        doc.add_heading('Retirement Scenario Comparison', level=2)
+                        doc.add_paragraph('This chart compares total damages across different retirement age scenarios.')
+                        doc.add_picture(ret_chart, width=Inches(7))
+                        doc.add_paragraph()
+            except Exception as e:
+                print(f"Error creating retirement scenarios chart: {e}")
+            
+            # ==================== TECHNICAL APPENDICES ====================
+            doc.add_page_break()
+            doc.add_heading('Technical Appendices', level=1)
+            doc.add_paragraph('Detailed tables and supplementary analyses follow in the appendices below.')
+            doc.add_paragraph()
             doc_notes = []
             if life_table:
                 lt_source = life_table.get('source')
@@ -1361,114 +1609,7 @@ def create_app(config_name='development'):
                 validation_header.add_run('All monitored inputs fall within configured ranges.').font.color.rgb = RGBColor(0x22, 0x8B, 0x22)
             doc.add_paragraph()
 
-            # ==================== AEF BREAKDOWN TABLE ====================
-            doc.add_heading('Adjusted Earnings Factor (AEF) Breakdown', level=1)
-            doc.add_paragraph('This table shows how the AEF is calculated from its component parts.')
-            doc.add_paragraph(f"Formula: AEF = (WLE/YFS) × (1 - UR×(1-URF)) × (1 - TL_eff) × (1 + FB){' × (1 - PC) × (1 - PM)' if meta.get('caseType') == 'wd' else ''}; Adjusted Earnings = GE × AEF.")
-            doc.add_paragraph()
-
-            aef_data = assumptions.get('aef', {})
-            horizon = assumptions.get('horizon', {})
-            is_wd = meta.get('caseType') == 'wd'
-
-            # Create AEF table
-            aef_table = doc.add_table(rows=1, cols=3)
-            aef_table.style = 'Light Grid Accent 1'
-
-            # Set headers
-            hdr_cells = aef_table.rows[0].cells
-            hdr_cells[0].text = 'Component'
-            hdr_cells[1].text = 'Value'
-            hdr_cells[2].text = 'Description'
-
-            for cell in hdr_cells:
-                for paragraph in cell.paragraphs:
-                    for run in paragraph.runs:
-                        run.font.bold = True
-
-            # Helper function to add AEF row
-            def add_aef_row(component, value, description, is_header=False):
-                row = aef_table.add_row()
-                cells = row.cells
-                cells[0].text = component
-                cells[1].text = value
-                cells[2].text = description
-
-                if is_header:
-                    for cell in cells:
-                        for paragraph in cell.paragraphs:
-                            for run in paragraph.runs:
-                                run.font.bold = True
-                                run.font.size = Pt(11)
-
-            # Base Components
-            add_aef_row('Base Components', '', '', True)
-            but_for_data = assumptions.get('butFor', {})
-            gross_earnings_base = aef_data.get('grossEarningsBase', but_for_data.get('salary', 0))
-            add_aef_row('Gross Earnings Base (GE)', f"${gross_earnings_base:,.2f}",
-                       'Base annual but-for salary')
-
-            # Work-Life & Unemployment Components
-            add_aef_row('Work-Life & Unemployment Components', '', '', True)
-            add_aef_row('Worklife Adjusted Earnings Base (WLE)', f"{aef_data.get('wle', 1):.5f}",
-                       f"WLE / YFS = {horizon.get('wleYears', 0)} / {horizon.get('yfsYears', 0)}")
-            add_aef_row('Unemployment Rate (UR)', f"{aef_data.get('UR', 0)*100:.2f}%", 'Probability of unemployment')
-            add_aef_row('Unemployment Reimbursement (URF)', f"{aef_data.get('URF', 0)*100:.2f}%",
-                       'Portion of unemployment offset by benefits')
-            add_aef_row('Effective Unemployment', f"{aef_data.get('ufEff', 0)*100:.2f}%",
-                       f"UR × (1 - URF) = {aef_data.get('UR', 0)*100:.2f}% × {(1 - aef_data.get('URF', 0)):.3f}")
-
-            # Tax Components
-            add_aef_row('Tax Components', '', '', True)
-            add_aef_row('Federal Tax (TLF)', f"{aef_data.get('TLF', 0)*100:.2f}%", 'Federal income tax rate')
-            add_aef_row('State Tax (TLS)', f"{aef_data.get('TLS', 0)*100:.2f}%", 'State income tax rate')
-            add_aef_row('Combined Tax (Simple Add)', f"{aef_data.get('tlCombined', 0)*100:.2f}%",
-                       'TLF + TLS (for reference only)')
-            add_aef_row('Effective Tax Rate', f"{aef_data.get('tlEff', 0)*100:.2f}%",
-                       '1 - (1 - TLF) × (1 - TLS) = Multiplicative method')
-
-            # Wrongful Death Components (if applicable)
-            if is_wd:
-                add_aef_row('Wrongful Death Components', '', '', True)
-                add_aef_row('Personal Consumption (PC)', f"{aef_data.get('PC', 0)*100:.2f}%",
-                           "Decedent's personal consumption")
-                add_aef_row('Personal Maintenance (PM)', f"{aef_data.get('PM', 0)*100:.2f}%",
-                           "Decedent's personal maintenance")
-
-            # Fringe Benefit Load (built into AEF)
-            add_aef_row('Fringe Benefit Load', '', '', True)
-            fringe_pct = aef_data.get('fringePct', 0)
-            add_aef_row('Fringe Benefit %', f"{fringe_pct*100:.2f}%",
-                       'Fringe benefits as % of wages')
-            add_aef_row('Fringe Load Factor', f"{(1 + fringe_pct):.5f}",
-                       '(1 + Fringe %) - multiplier applied in AEF')
-
-            # Final AEF Calculation
-            add_aef_row('Adjusted Earnings Factor (AEF)', '', '', True)
-            formula = 'GE × WLE × (1 - UF) × (1 - TR) × (1 + FB)'
-            if is_wd:
-                formula += ' × (1 - PC) × (1 - PM)'
-
-            factor_formula = 'WLE × (1 - UF) × (1 - TR) × (1 + FB)'
-            if is_wd:
-                factor_formula += ' × (1 - PC) × (1 - PM)'
-
-            add_aef_row('AEF Factor',
-                       f"{aef_data.get('factor', 1):.5f}" if aef_on else '1.00000 (OFF)',
-                       factor_formula)
-
-            aef_value = aef_data.get('value', 0)
-            add_aef_row('AEF (Adjusted Annual Earnings)',
-                       f"${aef_value:,.2f}" if aef_on else 'N/A (OFF)',
-                       formula)
-
-            add_aef_row('AEF Applied To', 'Gross Wages' if aef_on else 'N/A',
-                       'Result = Wages × AEF Factor (includes wage + fringe adjustment)' if aef_on else 'AEF is turned off')
-            add_aef_row('Fringe Treatment',
-                       'Built into AEF' if aef_on else 'Added separately',
-                       'Fringe benefits included via (1 + FB) multiplier in AEF' if aef_on else 'Fringes calculated and added separately when AEF is off')
-
-            doc.add_paragraph()
+            # AEF section will be moved to Appendix A
 
             def add_formula_note(text):
                 note = doc.add_paragraph(f"Formula: {text}")
@@ -1503,7 +1644,7 @@ def create_app(config_name='development'):
                         run.font.italic = True
                         run.font.size = Pt(10)
 
-                add_formula_note("Loss = BF After-Tax (+Fringe if shown) (+Legals if shown) - (ACT Earn + ACT Fringe (+ACT Legals if shown)); Past shown in 'Past' column; Future columns include PV only when discounting is on.")
+                add_formula_note("Loss = BF After-Tax (+Fringe if shown) (+Legally Required if shown) - (ACT Earn + ACT Fringe (+ACT Legally Required if shown)); Past shown in 'Past' column; Future columns include PV only when discounting is on.")
 
                 headers = ['Year', 'Age', 'Portion', 'BF Gross', 'BF After-Tax']
                 hw_used = pension_used = fringe_total_used = False
@@ -1528,7 +1669,7 @@ def create_app(config_name='development'):
                             headers.append('BF Fringe')
                 legals_used = include_legals and has_nonzero(rows, 'bfLegals')
                 if legals_used:
-                    headers.append('BF Legals')
+                    headers.append('BF Legally Required')
 
                 act_fringe_used = has_nonzero(rows, 'actFringe')
                 act_legals_used = include_legals and has_nonzero(rows, 'actLegals')
@@ -1621,9 +1762,15 @@ def create_app(config_name='development'):
 
             def add_tinari_table(rows_pre, rows_post, assumptions):
                 doc.add_heading('TINARI-STYLE SUMMARY (AEF ON)', level=2)
-                doc.add_paragraph('Formatted to match Tinari presentation (Year, Age, Portion, Base Earnings, Adjusted Income, Present Value).')
-
-                headers = ['Year', 'Age', 'Portion of Year', 'Base Earnings', 'Adjusted Income', 'Present Value']
+                options = assumptions.get('options', {})
+                include_disc = options.get('includeDiscounting', True)
+                
+                if include_disc:
+                    doc.add_paragraph('Formatted to match Tinari presentation (Year, Age, Portion, Base Earnings, Adjusted Income, Present Value).')
+                    headers = ['Year', 'Age', 'Portion of Year', 'Base Earnings', 'Adjusted Income', 'Present Value']
+                else:
+                    doc.add_paragraph('Formatted to match Tinari presentation (Year, Age, Portion, Base Earnings, Adjusted Income, Total AEF-adjusted compensation).')
+                    headers = ['Year', 'Age', 'Portion of Year', 'Base Earnings', 'Adjusted Income', 'Total AEF-adjusted compensation']
                 table = doc.add_table(rows=1, cols=len(headers))
                 table.style = 'Light Grid Accent 1'
                 for i, h in enumerate(headers):
@@ -1671,7 +1818,10 @@ def create_app(config_name='development'):
 
                 formula_row[2].text = growth_label
                 formula_row[3].text = formula_str
-                formula_row[4].text = f"{pct(discount_rate)} discount"
+                if include_disc:
+                    formula_row[4].text = f"{pct(discount_rate)} discount"
+                else:
+                    formula_row[4].text = "Discounting OFF"
                 formula_row[5].text = ''
                 for cell in formula_row:
                     for run in cell.paragraphs[0].runs:
@@ -1683,7 +1833,10 @@ def create_app(config_name='development'):
                 eq_row[1].text = ''
                 eq_row[2].text = ''
                 eq_row[3].text = 'Adjusted Income = Base × AEF'
-                eq_row[4].text = 'Present Value = Adjusted / (1 + r)^{years from valuation}'
+                if include_disc:
+                    eq_row[4].text = 'Present Value = Adjusted / (1 + r)^{years from valuation}'
+                else:
+                    eq_row[4].text = 'Total Compensation = Adjusted Income + Legally Required'
                 eq_row[5].text = ''
                 for cell in eq_row:
                     for run in cell.paragraphs[0].runs:
@@ -1701,14 +1854,20 @@ def create_app(config_name='development'):
 
                 def add_data(rows, label):
                     adj_total = 0
-                    pv_total = 0
+                    total_comp = 0
 
                     for row in rows:
                         cells = table.add_row().cells
-                        pv = (row.get('pastPart', 0) or 0) + (row.get('pvFuture', 0) or 0)
                         adj = row.get('bfAdj', 0) or 0
                         adj_total += adj
-                        pv_total += pv
+                        
+                        if include_disc:
+                            # When discounting is on, use PV
+                            comp_value = (row.get('pastPart', 0) or 0) + (row.get('pvFuture', 0) or 0)
+                        else:
+                            # When discounting is off, use total compensation (adjusted income + legally required)
+                            comp_value = adj + (row.get('bfLegals', 0) or 0)
+                        total_comp += comp_value
 
                         values = [
                             str(row.get('year', '')),
@@ -1716,7 +1875,7 @@ def create_app(config_name='development'):
                             f"{(row.get('portion', 0)*100):.0f}%",
                             f"${row.get('bfGross', 0):,.2f}",
                             f"${adj:,.2f}",
-                            f"${pv or 0:,.2f}"
+                            f"${comp_value:,.2f}"
                         ]
                         for i, val in enumerate(values):
                             cells[i].text = val
@@ -1730,18 +1889,18 @@ def create_app(config_name='development'):
                         total_cells[2].text = ''
                         total_cells[3].text = ''
                         total_cells[4].text = f"${adj_total:,.2f}"
-                        total_cells[5].text = f"${pv_total:,.2f}"
+                        total_cells[5].text = f"${total_comp:,.2f}"
                         for idx in (0, 4, 5):
                             for run in total_cells[idx].paragraphs[0].runs:
                                 run.font.size = Pt(8)
                                 run.font.bold = True
 
-                    return adj_total, pv_total
+                    return adj_total, total_comp
 
                 add_section('Past Years')
-                past_adj_total, past_pv_total = add_data(rows_pre or [], 'Past')
+                past_adj_total, past_comp_total = add_data(rows_pre or [], 'Past')
                 add_section('Future Years')
-                future_adj_total, future_pv_total = add_data(rows_post or [], 'Future')
+                future_adj_total, future_comp_total = add_data(rows_post or [], 'Future')
 
                 total_row = table.add_row().cells
                 total_row[0].text = 'Total'
@@ -1750,12 +1909,15 @@ def create_app(config_name='development'):
                 total_row[3].text = ''
                 total_adj = past_adj_total + future_adj_total
                 totals_from_assumps = assumptions.get('totals') if isinstance(assumptions.get('totals'), dict) else {}
-                total_pv = totals_from_assumps.get('totalPV')
-                if total_pv is None:
-                    total_pv = past_pv_total + future_pv_total
+                if include_disc:
+                    total_comp = totals_from_assumps.get('totalPV')
+                    if total_comp is None:
+                        total_comp = past_comp_total + future_comp_total
+                else:
+                    total_comp = past_comp_total + future_comp_total
 
                 total_row[4].text = f"${total_adj:,.2f}"
-                total_row[5].text = f"${total_pv:,.2f}"
+                total_row[5].text = f"${total_comp:,.2f}"
                 for idx in (0, 4, 5):
                     for run in total_row[idx].paragraphs[0].runs:
                         run.font.bold = True
@@ -1774,7 +1936,7 @@ def create_app(config_name='development'):
                     for run in para.runs:
                         run.italic = True
 
-                add_formula_note("Loss = BF After-Tax (+Fringe if shown) (+Legals if shown) - (ACT Earn + ACT Fringe (+ACT Legals if shown)); Future values reflect PV only when discounting is enabled.")
+                add_formula_note("Loss = BF After-Tax (+Fringe if shown) (+Legally Required if shown) - (ACT Earn + ACT Fringe (+ACT Legally Required if shown)); Future values reflect PV only when discounting is enabled.")
 
                 fringe_used = False
                 hw_used = pension_used = fringe_total_used = False
@@ -1802,7 +1964,7 @@ def create_app(config_name='development'):
                     else:
                         headers.append('BF Fringe')
                 if legals_used:
-                    headers.append('BF Legals')
+                    headers.append('BF Legally Required')
                 headers.append('ACT Earn')
                 if act_fringe_used:
                     headers.append('ACT Fringe')
@@ -1907,20 +2069,13 @@ def create_app(config_name='development'):
                 else:
                     qa_para.add_run(f"QA Warning: Sum of YOY PV (${qa_sum:,.2f}) differs from scenario Future PV (${totals_context.get('futurePV', 0):,.2f}).").italic = True
                 doc.add_paragraph()
-            # Add tables with clear labels and descriptions in a simplified order
-            doc.add_heading('Tinari Tables', level=1)
-            if tinari_mode:
-                assumptions_for_tinari = data.get('assumptions', {}).copy()
-                assumptions_for_tinari['totals'] = totals
-                add_tinari_table(schedule.get('rowsPre', []), schedule.get('rowsPost', []), assumptions_for_tinari)
-            else:
-                doc.add_paragraph('Tinari layout tables appear when AEF is ON. Enable AEF to view the Tinari summary tables.')
-            doc.add_paragraph()
+            # Old sections moved to appendices - see below
 
-            # Add Retirement Scenarios table
-            # Add Retirement Scenarios tables and visuals
-            retirement_scenarios = data.get('retirementScenarios', [])
-            if retirement_scenarios and isinstance(retirement_scenarios, list) and len(retirement_scenarios) > 0:
+            # Old retirement scenarios section removed - moved to Appendix E
+            # Retirement scenarios are now handled in Appendix E with incremental years
+            if False:  # Old section disabled - see Appendix E
+                retirement_scenarios_old = data.get('retirementScenarios', [])
+                if retirement_scenarios_old and isinstance(retirement_scenarios_old, list) and len(retirement_scenarios_old) > 0:
                 try:
                     # Summary (Tinari text or full table)
                     if tinari_mode:
@@ -2040,7 +2195,7 @@ def create_app(config_name='development'):
                         include_legals_ret = ret_options.get('includeLegals', True)
                         show_fringe_ret = not aef_on_ret
 
-                        add_formula_note("Loss = BF After-Tax (+Fringe if shown) (+Legals if shown) - (ACT Earn + ACT Fringe (+ACT Legals if shown)); Past column is past portion; Future columns are precomputed per year.")
+                        add_formula_note("Loss = BF After-Tax (+Fringe if shown) (+Legally Required if shown) - (ACT Earn + ACT Fringe (+ACT Legally Required if shown)); Past column is past portion; Future columns are precomputed per year.")
 
                         hw_used_ret = pension_used_ret = fringe_total_used_ret = False
                         ret_fringe_used = False
@@ -2068,12 +2223,12 @@ def create_app(config_name='development'):
                             else:
                                 ret_detail_headers.append('BF Fringe')
                         if legals_used_ret:
-                            ret_detail_headers.append('BF Legals')
+                            ret_detail_headers.append('BF Legally Required')
                         ret_detail_headers.append('ACT Earn')
                         if act_fringe_used_ret:
                             ret_detail_headers.append('ACT Fringe')
                         if act_legals_used_ret:
-                            ret_detail_headers.append('ACT Legals')
+                            ret_detail_headers.append('ACT Legally Required')
                         ret_detail_headers.extend(['Loss', 'Past'])
                         if include_discounting:
                             ret_detail_headers.extend(['Future Raw', 'Future Surv', 'PV Future', 'Surv Prob'])
@@ -2273,7 +2428,7 @@ def create_app(config_name='development'):
                                     include_legals_sens = sens_options.get('includeLegals', True)
                                     show_fringe_sens = not aef_on_sens
 
-                                    add_formula_note("Loss = BF After-Tax/AEF (+Fringe if shown) (+Legals if shown) - (ACT Earn + ACT Fringe (+ACT Legals if shown)); Past column shows past portion; PV(Future) and Survival-weighted values already computed for each cell.")
+                                    add_formula_note("Loss = BF After-Tax/AEF (+Fringe if shown) (+Legally Required if shown) - (ACT Earn + ACT Fringe (+ACT Legally Required if shown)); Past column shows past portion; PV(Future) and Survival-weighted values already computed for each cell.")
 
                                     hw_used_sens = pension_used_sens = fringe_total_used_sens = False
                                     fringe_used_sens = False
@@ -2302,12 +2457,12 @@ def create_app(config_name='development'):
                                         else:
                                             sens_detail_headers.append('BF Fringe')
                                     if legals_used_sens:
-                                        sens_detail_headers.append('BF Legally Req')
+                                        sens_detail_headers.append('BF Legally Required')
                                     sens_detail_headers.append('ACT Earn')
                                     if act_fringe_used_sens:
                                         sens_detail_headers.append('ACT Fringe')
                                     if act_legals_used_sens:
-                                        sens_detail_headers.append('ACT Legals')
+                                        sens_detail_headers.append('ACT Legally Required')
                                     sens_detail_headers.extend(['Loss', 'Past'])
                                     sens_detail_headers.extend(['Future (Raw)', 'Future (Survival)', 'PV(Future)', 'Survival Prob'])
 
@@ -2404,18 +2559,16 @@ def create_app(config_name='development'):
                     print(f"Error adding summary table: {e}")
                     # Continue with export even if this section fails
 
-            # ==================== ADDITIONAL COMPREHENSIVE TABLES ====================
-            doc.add_heading('SUPPLEMENTARY ANALYSIS TABLES', level=1)
-            doc.add_paragraph('Additional detailed breakdowns for comprehensive damages documentation')
-            doc.add_paragraph()
-
-            # Additional Table 1: Component Breakdown (But-For Components Only)
-            if not tinari_mode and all_rows:
+            # Old supplementary tables section removed - moved to Appendix F
+            
+            # Additional Table 1: Component Breakdown (But-For Components Only) - Now in Appendix F
+            # Keeping code here temporarily for reference, but tables are generated in Appendix F
+            if False and not tinari_mode and all_rows:
                 try:
                     doc.add_heading('TABLE 7: But-For Earnings Components Breakdown', level=2)
                     doc.add_paragraph('Detailed breakdown of all but-for earning components by year').italic = True
 
-                    add_formula_note("Total BF Package = BF After-Tax/AEF (+Fringe if shown) (+Legally Required if shown); Portion = fraction of the year included.")
+                    add_formula_note("Total BF Package = BF After-Tax/AEF (+Fringe if shown) (+Legally Required Employer Contributions if shown); Portion = fraction of the year included.")
 
                     comp_headers = ['Year', 'Age', 'BF Gross', 'BF After-Tax/AEF']
                     fringe_used = False
@@ -2440,7 +2593,7 @@ def create_app(config_name='development'):
                                 comp_headers.append('BF Fringe')
                     legals_used = include_legals and has_nonzero(all_rows, 'bfLegals')
                     if legals_used:
-                        comp_headers.append('BF Legally Req')
+                        comp_headers.append('BF Legally Required')
                     comp_headers.extend(['Total BF Package', 'Portion'])
 
                     comp_table = doc.add_table(rows=1, cols=len(comp_headers))
@@ -2504,7 +2657,7 @@ def create_app(config_name='development'):
                     doc.add_heading('TABLE 8: Actual Earnings Components Breakdown', level=2)
                     doc.add_paragraph('Detailed breakdown of all actual/post-injury earning components by year').italic = True
 
-                    add_formula_note("Total Actual Package = Actual Earnings + Actual Fringe (+ Legally Required if shown).")
+                    add_formula_note("Total Actual Package = Actual Earnings + Actual Fringe (+ Legally Required Employer Contributions if shown).")
 
                     act_headers = ['Year', 'Age', 'Actual Earnings']
                     act_fringe_used = has_nonzero(all_rows, 'actFringe')
@@ -2512,7 +2665,7 @@ def create_app(config_name='development'):
                     if act_fringe_used:
                         act_headers.append('Actual Fringe')
                     if act_legals_used:
-                        act_headers.append('Actual Legally Req')
+                        act_headers.append('Actual Legally Required')
                     act_headers.append('Total Actual Package')
 
                     act_table = doc.add_table(rows=1, cols=len(act_headers))
@@ -2647,13 +2800,602 @@ def create_app(config_name='development'):
                 except Exception as e:
                     print(f"Error adding loss components table: {e}")
 
-            # Move all visuals to the end for easier reading
+            # Old charts section removed - core charts are now in main body, rest moved to Appendix H
+            
+            # ==================== APPENDIX A: AEF DETAILED BREAKDOWN ====================
             doc.add_page_break()
-            doc.add_heading('Executive Visual Summary', level=1)
-            doc.add_paragraph('Charts and graphs appear after all tables for a simpler, story-first read.').italic = True
+            doc.add_heading('Appendix A: Adjusted Earnings Factor (AEF) Detailed Breakdown', level=1)
+            doc.add_paragraph('This table shows how the AEF is calculated from its component parts.')
+            
+            # Standardized formula with T_eff and U_eff
+            aef_data = assumptions.get('aef', {})
+            horizon = assumptions.get('horizon', {})
+            is_wd = meta.get('caseType') == 'wd'
+            
+            formula_parts = []
+            wle = aef_data.get('wle', 1)
+            u_eff = aef_data.get('ufEff', 0)
+            t_eff = aef_data.get('tlEff', 0)
+            fb = aef_data.get('fringePct', 0)
+            formula_parts.append(f"(WLE/YFS {wle:.5f})")
+            formula_parts.append(f"× (1 - U_eff {u_eff:.5f})")
+            formula_parts.append(f"× (1 - T_eff {t_eff:.5f})")
+            formula_parts.append(f"× (1 + FB {fb:.5f})")
+            if is_wd:
+                pc = aef_data.get('PC', 0)
+                pm = aef_data.get('PM', 0)
+                formula_parts.append(f"× (1 - PC {pc:.5f})")
+                formula_parts.append(f"× (1 - PM {pm:.5f})")
+            formula_str = ' '.join(formula_parts)
+            doc.add_paragraph(f"Formula: AEF = {formula_str}; Adjusted Earnings = GE × AEF.")
             doc.add_paragraph()
 
-            # Chart 1: Damages Breakdown Pie Chart
+            # Create AEF table
+            aef_table = doc.add_table(rows=1, cols=3)
+            aef_table.style = 'Light Grid Accent 1'
+
+            # Set headers
+            hdr_cells = aef_table.rows[0].cells
+            hdr_cells[0].text = 'Component'
+            hdr_cells[1].text = 'Value'
+            hdr_cells[2].text = 'Description'
+
+            for cell in hdr_cells:
+                for paragraph in cell.paragraphs:
+                    for run in paragraph.runs:
+                        run.font.bold = True
+
+            # Helper function to add AEF row
+            def add_aef_row(component, value, description, is_header=False):
+                row = aef_table.add_row()
+                cells = row.cells
+                cells[0].text = component
+                cells[1].text = value
+                cells[2].text = description
+
+                if is_header:
+                    for cell in cells:
+                        for paragraph in cell.paragraphs:
+                            for run in paragraph.runs:
+                                run.font.bold = True
+                                run.font.size = Pt(11)
+
+            # Base wage
+            add_aef_row('Base Components', '', '', True)
+            but_for_data = assumptions.get('butFor', {})
+            gross_earnings_base = aef_data.get('grossEarningsBase', but_for_data.get('salary', 0))
+            add_aef_row('Gross Earnings Base (GE)', f"${gross_earnings_base:,.2f}",
+                       'Base annual but-for salary')
+
+            # Worklife ratio
+            add_aef_row('Worklife Ratio', '', '', True)
+            add_aef_row('Worklife ratio (WLE/YFS)', f"{aef_data.get('wle', 1):.5f}",
+                       f"WLE / YFS = {horizon.get('wleYears', 0)} / {horizon.get('yfsYears', 0)}")
+
+            # Unemployment inputs and effective unemployment
+            add_aef_row('Unemployment Components', '', '', True)
+            add_aef_row('Unemployment Rate (UR)', f"{aef_data.get('UR', 0)*100:.2f}% (probability per year)", 
+                       'Annual unemployment probability')
+            add_aef_row('Unemployment Reimbursement (URF)', f"{aef_data.get('URF', 0)*100:.2f}% (percent of wages)",
+                       'Portion of unemployment offset by benefits')
+            add_aef_row('Effective Unemployment (U_eff)', f"{aef_data.get('ufEff', 0)*100:.2f}% (probability per year)",
+                       f"UR × (1 - URF) = {aef_data.get('UR', 0)*100:.2f}% × {(1 - aef_data.get('URF', 0)):.3f}")
+
+            # Tax inputs and effective tax rate
+            add_aef_row('Tax Components', '', '', True)
+            add_aef_row('Federal Tax (TLF)', f"{aef_data.get('TLF', 0)*100:.2f}% (percent of wages)", 
+                       'Federal income tax rate')
+            add_aef_row('State Tax (TLS)', f"{aef_data.get('TLS', 0)*100:.2f}% (percent of wages)", 
+                       'State income tax rate')
+            add_aef_row('Effective Tax Rate (T_eff)', f"{aef_data.get('tlEff', 0)*100:.2f}% (percent of wages)",
+                       '1 - (1 - TLF) × (1 - TLS) = Multiplicative method')
+
+            # Wrongful Death Components (if applicable)
+            if is_wd:
+                add_aef_row('Wrongful Death Components', '', '', True)
+                add_aef_row('Personal Consumption (PC)', f"{aef_data.get('PC', 0)*100:.2f}% (percent of wages)",
+                           "Decedent's personal consumption")
+                add_aef_row('Personal Maintenance (PM)', f"{aef_data.get('PM', 0)*100:.2f}% (percent of wages)",
+                           "Decedent's personal maintenance")
+
+            # Fringe percentage and load factor
+            add_aef_row('Fringe Benefit Load', '', '', True)
+            fringe_pct = aef_data.get('fringePct', 0)
+            add_aef_row('Fringe Benefit % (FB)', f"{fringe_pct*100:.2f}% (percent of wages)",
+                       'Fringe benefits as % of wages')
+            add_aef_row('Fringe Load Factor', f"{(1 + fringe_pct):.5f}",
+                       '(1 + Fringe %) - multiplier applied in AEF')
+
+            # Final AEF factor and adjusted annual amount
+            add_aef_row('Adjusted Earnings Factor (AEF)', '', '', True)
+            factor_formula = 'WLE × (1 - U_eff) × (1 - T_eff) × (1 + FB)'
+            if is_wd:
+                factor_formula += ' × (1 - PC) × (1 - PM)'
+
+            add_aef_row('AEF Factor',
+                       f"{aef_data.get('factor', 1):.5f}" if aef_on else '1.00000 (OFF)',
+                       factor_formula)
+
+            aef_value = aef_data.get('value', 0)
+            formula = 'GE × AEF Factor'
+            add_aef_row('AEF (Adjusted Annual Earnings)',
+                       f"${aef_value:,.2f}" if aef_on else 'N/A (OFF)',
+                       formula)
+
+            add_aef_row('AEF Applied To', 'Gross Wages' if aef_on else 'N/A',
+                       'Result = Wages × AEF Factor (includes wage + fringe adjustment)' if aef_on else 'AEF is turned off')
+            add_aef_row('Fringe Treatment',
+                       'Built into AEF' if aef_on else 'Added separately',
+                       'Fringe benefits included via (1 + FB) multiplier in AEF' if aef_on else 'Fringes calculated and added separately when AEF is off')
+            
+            # Add explanation about AEF factor close to 1
+            if aef_on:
+                aef_factor = aef_data.get('factor', 1)
+                if abs(aef_factor - 1.0) < 0.02:
+                    doc.add_paragraph()
+                    doc.add_paragraph(
+                        'Although taxes and unemployment reduce earnings, the large UPS fringe package more than offsets those reductions, '
+                        'yielding an AEF very close to one.'
+                    )
+            doc.add_paragraph()
+            
+            # ==================== APPENDIX B: TINARI TABLES ====================
+            doc.add_page_break()
+            doc.add_heading('Appendix B: Tinari Tables', level=1)
+            if tinari_mode:
+                assumptions_for_tinari = data.get('assumptions', {}).copy()
+                assumptions_for_tinari['totals'] = totals
+                add_tinari_table(schedule.get('rowsPre', []), schedule.get('rowsPost', []), assumptions_for_tinari)
+            else:
+                doc.add_paragraph('Tinari layout tables appear when AEF is ON. Enable AEF to view the Tinari summary tables.')
+            doc.add_paragraph()
+            
+            # ==================== APPENDIX C: PRE-INJURY YEAR-BY-YEAR TABLE ====================
+            doc.add_page_break()
+            doc.add_heading('Appendix C: Pre-Injury Year-by-Year Table (Full Detail)', level=1)
+            doc.add_paragraph('Detailed year-by-year breakdown of pre-injury (incident to report date) losses.').italic = True
+            if schedule.get('rowsPre'):
+                add_schedule_table('Pre-Injury: Incident to Report Date', schedule.get('rowsPre', []), 
+                                 use_ups_fringe, aef_on, include_legals, include_discounting,
+                                 f'Past damages calculated through {val_date_str}.')
+            else:
+                doc.add_paragraph('No pre-injury period data available.')
+            doc.add_paragraph()
+            
+            # ==================== APPENDIX D: POST-INJURY YEAR-BY-YEAR TABLE ====================
+            doc.add_page_break()
+            doc.add_heading('Appendix D: Post-Injury Year-by-Year Table (Full Detail)', level=1)
+            doc.add_paragraph('Detailed year-by-year breakdown of post-injury (report date to retirement) losses.').italic = True
+            if schedule.get('rowsPost'):
+                doc.add_paragraph(f'Past damages calculated through {val_date_str}. All future years show Future = [value], Past = $0.00.')
+                add_schedule_table('Post-Injury: Report Date to Retirement', schedule.get('rowsPost', []), 
+                                 use_ups_fringe, aef_on, include_legals, include_discounting)
+            else:
+                doc.add_paragraph('No post-injury period data available.')
+            doc.add_paragraph()
+            
+            # ==================== APPENDIX E: RETIREMENT SCENARIO TABLES ====================
+            doc.add_page_break()
+            doc.add_heading('Appendix E: Retirement Scenario Tables', level=1)
+            
+            # Scenario summary table
+            if retirement_scenarios and len(retirement_scenarios) > 0:
+                doc.add_heading('Retirement Scenario Summary Comparison', level=2)
+                ret_summary_table = doc.add_table(rows=1, cols=3)
+                ret_summary_table.style = 'Light Grid Accent 1'
+                hdr_cells = ret_summary_table.rows[0].cells
+                hdr_cells[0].text = 'Retirement Age'
+                hdr_cells[1].text = f'Future Loss{amount_label}'
+                hdr_cells[2].text = '% Increase vs Age 57'
+                for cell in hdr_cells:
+                    for paragraph in cell.paragraphs:
+                        for run in paragraph.runs:
+                            run.font.bold = True
+                
+                # Find base scenario
+                base_scenario = None
+                base_future = 0
+                for scenario in retirement_scenarios:
+                    if not isinstance(scenario, dict):
+                        continue
+                    retire_age = scenario.get('retireAge', 0)
+                    if retire_age == 57 or (not base_scenario and retire_age < 60):
+                        base_scenario = scenario
+                        scenario_totals = scenario.get('totals', {})
+                        base_future = scenario_totals.get('futurePV', 0) if include_discounting else sum(r.get('futurePart', 0) for r in scenario.get('schedule', {}).get('rows', []) or [])
+                        break
+                
+                if not base_scenario:
+                    base_future = future_pv if include_discounting else future_nominal
+                
+                # Add baseline row
+                row = ret_summary_table.add_row()
+                row.cells[0].text = '57'
+                row.cells[1].text = f"${base_future:,.2f}"
+                row.cells[2].text = 'baseline'
+                
+                # Add alternative scenarios
+                for scenario in sorted([s for s in retirement_scenarios if isinstance(s, dict) and s.get('retireAge', 0) in [65, 67, 70]], 
+                                     key=lambda x: x.get('retireAge', 0)):
+                    scenario_totals = scenario.get('totals', {})
+                    scenario_future = scenario_totals.get('futurePV', 0) if include_discounting else sum(r.get('futurePart', 0) for r in scenario.get('schedule', {}).get('rows', []) or [])
+                    pct_increase = ((scenario_future - base_future) / base_future * 100) if base_future > 0 else 0
+                    
+                    row = ret_summary_table.add_row()
+                    row.cells[0].text = str(scenario.get('retireAge', ''))
+                    row.cells[1].text = f"${scenario_future:,.2f}"
+                    row.cells[2].text = f"+{pct_increase:.1f}%"
+                doc.add_paragraph()
+                
+                # Detailed scenario tables with incremental years
+                doc.add_heading('Detailed Retirement Scenario Tables', level=2)
+                doc.add_paragraph('For alternative retirement ages, years 2023-57 are identical to the base scenario. Only incremental years (age 58+) are shown below.').italic = True
+                doc.add_paragraph()
+                
+                # Base scenario - full table
+                if base_scenario:
+                    scenario_name = base_scenario.get('name', 'Base Scenario (Retire at 57)')
+                    doc.add_heading(f'{scenario_name} - Full Year-by-Year Table', level=3)
+                    scenario_schedule = base_scenario.get('schedule', {})
+                    if scenario_schedule.get('rows'):
+                        ret_options = base_scenario.get('assumptions', {}).get('options', data.get('assumptions', {}).get('options', {}))
+                        ret_aef = base_scenario.get('assumptions', {}).get('aef', data.get('assumptions', {}).get('aef', {}))
+                        use_ups_fringe_ret = base_scenario.get('assumptions', {}).get('butFor', {}).get('fringeMethod') == 'ups' or data.get('assumptions', {}).get('butFor', {}).get('fringeMethod') == 'ups'
+                        aef_on_ret = ret_options.get('includeAEF', False) and ret_aef.get('mode') == 'on'
+                        include_legals_ret = ret_options.get('includeLegals', True)
+                        show_fringe_ret = not aef_on_ret
+                        add_schedule_table(f'{scenario_name} - Full Table', scenario_schedule.get('rows', []), 
+                                         use_ups_fringe_ret, aef_on_ret, include_legals_ret, include_discounting)
+                
+                # Alternative scenarios - incremental years only
+                for scenario in sorted([s for s in retirement_scenarios if isinstance(s, dict) and s.get('retireAge', 0) in [65, 67, 70]], 
+                                     key=lambda x: x.get('retireAge', 0)):
+                    scenario_name = scenario.get('name', f'Scenario (Retire at {scenario.get("retireAge", "")})')
+                    retire_age = scenario.get('retireAge', 0)
+                    scenario_schedule = scenario.get('schedule', {})
+                    scenario_rows = scenario_schedule.get('rows', [])
+                    
+                    if scenario_rows:
+                        # Find where age 58+ starts
+                        incremental_rows = []
+                        pre_57_total = 0
+                        for row in scenario_rows:
+                            age = row.get('age', 0)
+                            if isinstance(age, (int, float)) and age >= 58:
+                                incremental_rows.append(row)
+                            elif isinstance(age, (int, float)) and age < 58:
+                                pre_57_total += row.get('futurePart', 0) if not include_discounting else row.get('pvFuture', 0)
+                        
+                        doc.add_heading(f'{scenario_name} - Incremental Years (Age 58+)', level=3)
+                        doc.add_paragraph(f'Years 2023-57 identical to base scenario (total: ${pre_57_total:,.2f}). Incremental years shown below:')
+                        doc.add_paragraph()
+                        
+                        ret_options = scenario.get('assumptions', {}).get('options', data.get('assumptions', {}).get('options', {}))
+                        ret_aef = scenario.get('assumptions', {}).get('aef', data.get('assumptions', {}).get('aef', {}))
+                        use_ups_fringe_ret = scenario.get('assumptions', {}).get('butFor', {}).get('fringeMethod') == 'ups' or data.get('assumptions', {}).get('butFor', {}).get('fringeMethod') == 'ups'
+                        aef_on_ret = ret_options.get('includeAEF', False) and ret_aef.get('mode') == 'on'
+                        include_legals_ret = ret_options.get('includeLegals', True)
+                        show_fringe_ret = not aef_on_ret
+                        
+                        if incremental_rows:
+                            add_schedule_table(f'{scenario_name} - Incremental Years', incremental_rows, 
+                                             use_ups_fringe_ret, aef_on_ret, include_legals_ret, include_discounting)
+            else:
+                doc.add_paragraph('No retirement scenario data available.')
+            doc.add_paragraph()
+            
+            # ==================== APPENDIX F: SUPPLEMENTARY ANALYSIS TABLES ====================
+            # Move existing supplementary tables here
+            doc.add_page_break()
+            doc.add_heading('Appendix F: Supplementary Analysis Tables', level=1)
+            
+            # Year-over-year summary
+            if schedule.get('rows'):
+                try:
+                    show_fringe = not aef_on
+                    add_yoy_summary_table(
+                        schedule.get('rows', []),
+                        totals,
+                        use_ups_fringe,
+                        show_fringe,
+                        include_legals,
+                        'TABLE 6: Year-Over-Year Loss Summary',
+                        'Condensed annual summary showing key earnings and loss figures for each year',
+                        include_discounting
+                    )
+                except Exception as e:
+                    print(f"Error adding summary table: {e}")
+            
+            # TABLE 7: But-For Earnings Components Breakdown
+            if not tinari_mode and all_rows:
+                try:
+                    doc.add_heading('TABLE 7: But-For Earnings Components Breakdown', level=2)
+                    doc.add_paragraph('Detailed breakdown of all but-for earning components by year').italic = True
+
+                    add_formula_note("Total BF Package = BF After-Tax/AEF (+Fringe if shown) (+Legally Required Employer Contributions if shown); Portion = fraction of the year included.")
+
+                    comp_headers = ['Year', 'Age', 'BF Gross', 'BF After-Tax/AEF']
+                    fringe_used = False
+                    hw_used = pension_used = fringe_total_used = False
+                    if show_fringe:
+                        if use_ups_fringe:
+                            hw_used = has_nonzero(all_rows, 'bfHW')
+                            pension_used = has_nonzero(all_rows, 'bfPension')
+                            fringe_total_used = has_nonzero(all_rows, 'bfFringe')
+                            if hw_used:
+                                comp_headers.append('H&W')
+                                fringe_used = True
+                            if pension_used:
+                                comp_headers.append('Pension')
+                                fringe_used = True
+                            if fringe_total_used:
+                                comp_headers.append('Total Fringe')
+                                fringe_used = True
+                        else:
+                            fringe_used = has_nonzero(all_rows, 'bfFringe')
+                            if fringe_used:
+                                comp_headers.append('BF Fringe')
+                    legals_used = include_legals and has_nonzero(all_rows, 'bfLegals')
+                    if legals_used:
+                        comp_headers.append('BF Legally Required')
+                    comp_headers.extend(['Total BF Package', 'Portion'])
+
+                    comp_table = doc.add_table(rows=1, cols=len(comp_headers))
+                    comp_table.style = 'Light Grid Accent 1'
+
+                    hdr_cells = comp_table.rows[0].cells
+                    for i, header in enumerate(comp_headers):
+                        hdr_cells[i].text = header
+                        hdr_cells[i].paragraphs[0].runs[0].font.bold = True
+                        hdr_cells[i].paragraphs[0].runs[0].font.size = Pt(9)
+
+                    for row_data in all_rows:
+                        if not isinstance(row_data, dict):
+                            continue
+                        row_cells = comp_table.add_row().cells
+
+                        bf_total = row_data.get('bfAdj', 0)
+                        values = [
+                            str(row_data.get('year', '')),
+                            str(row_data.get('age', '')),
+                            f"${row_data.get('bfGross', 0):,.2f}",
+                            f"${row_data.get('bfAdj', 0):,.2f}"
+                        ]
+
+                        if show_fringe:
+                            if use_ups_fringe:
+                                if hw_used:
+                                    values.append(f"${row_data.get('bfHW', 0):,.2f}")
+                                if pension_used:
+                                    values.append(f"${row_data.get('bfPension', 0):,.2f}")
+                                if fringe_total_used:
+                                    values.append(f"${row_data.get('bfFringe', 0):,.2f}")
+                                bf_total += row_data.get('bfFringe', 0)
+                            else:
+                                if fringe_used:
+                                    values.append(f"${row_data.get('bfFringe', 0):,.2f}")
+                                bf_total += row_data.get('bfFringe', 0)
+
+                        if legals_used:
+                            values.append(f"${row_data.get('bfLegals', 0):,.2f}")
+                            bf_total += row_data.get('bfLegals', 0)
+
+                        values.extend([
+                            f"${bf_total:,.2f}",
+                            f"{row_data.get('portion', 0):.3f}" if isinstance(row_data.get('portion', 0), (int, float)) else str(row_data.get('portion', ''))
+                        ])
+
+                        for i, value in enumerate(values):
+                            if i < len(row_cells):
+                                row_cells[i].text = value
+                                if row_cells[i].paragraphs and len(row_cells[i].paragraphs) > 0 and row_cells[i].paragraphs[0].runs and len(row_cells[i].paragraphs[0].runs) > 0:
+                                    row_cells[i].paragraphs[0].runs[0].font.size = Pt(8)
+
+                    doc.add_paragraph()
+                except Exception as e:
+                    print(f"Error adding component breakdown table: {e}")
+
+            # TABLE 8: Actual Earnings Components Breakdown
+            if not tinari_mode and all_rows:
+                try:
+                    doc.add_heading('TABLE 8: Actual Earnings Components Breakdown', level=2)
+                    doc.add_paragraph('Detailed breakdown of all actual/post-injury earning components by year').italic = True
+
+                    add_formula_note("Total Actual Package = Actual Earnings + Actual Fringe (+ Legally Required Employer Contributions if shown).")
+
+                    act_headers = ['Year', 'Age', 'Actual Earnings']
+                    act_fringe_used = has_nonzero(all_rows, 'actFringe')
+                    act_legals_used = include_legals and has_nonzero(all_rows, 'actLegals')
+                    if act_fringe_used:
+                        act_headers.append('Actual Fringe')
+                    if act_legals_used:
+                        act_headers.append('Actual Legally Required')
+                    act_headers.append('Total Actual Package')
+
+                    act_table = doc.add_table(rows=1, cols=len(act_headers))
+                    act_table.style = 'Light Grid Accent 1'
+
+                    hdr_cells = act_table.rows[0].cells
+                    for i, header in enumerate(act_headers):
+                        hdr_cells[i].text = header
+                        hdr_cells[i].paragraphs[0].runs[0].font.bold = True
+                        hdr_cells[i].paragraphs[0].runs[0].font.size = Pt(9)
+
+                    for row_data in all_rows:
+                        if not isinstance(row_data, dict):
+                            continue
+                        row_cells = act_table.add_row().cells
+                        act_total = row_data.get('actE', 0)
+                        if act_fringe_used:
+                            act_total += row_data.get('actFringe', 0)
+                        if act_legals_used:
+                            act_total += row_data.get('actLegals', 0)
+
+                        values = [
+                            str(row_data.get('year', '')),
+                            str(row_data.get('age', '')),
+                            f"${row_data.get('actE', 0):,.2f}"
+                        ]
+                        if act_fringe_used:
+                            values.append(f"${row_data.get('actFringe', 0):,.2f}")
+                        if act_legals_used:
+                            values.append(f"${row_data.get('actLegals', 0):,.2f}")
+                        values.append(f"${act_total:,.2f}")
+
+                        for i, value in enumerate(values):
+                            row_cells[i].text = value
+                            if row_cells[i].paragraphs and len(row_cells[i].paragraphs) > 0 and row_cells[i].paragraphs[0].runs and len(row_cells[i].paragraphs[0].runs) > 0:
+                                row_cells[i].paragraphs[0].runs[0].font.size = Pt(8)
+
+                    doc.add_paragraph()
+                except Exception as e:
+                    print(f"Error adding actual components table: {e}")
+
+            # TABLE 9: Present Value and Survival Analysis
+            if not tinari_mode and all_rows and include_discounting:
+                try:
+                    doc.add_heading('TABLE 9: Present Value and Survival Probability Analysis', level=2)
+                    doc.add_paragraph('Shows the impact of present value discounting and survival probabilities on future damages').italic = True
+
+                    add_formula_note("Future (Survival) = Future (Raw) × Survival Prob; PV(Future) = Future (Survival) discounted to valuation date.")
+    
+                    pv_table = doc.add_table(rows=1, cols=7)
+                    pv_table.style = 'Light Grid Accent 1'
+    
+                    pv_headers = ['Year', 'Age', 'Annual Loss', 'Survival Prob', 'Future (Raw)', 'Future (Survival)', 'PV(Future)']
+                    hdr_cells = pv_table.rows[0].cells
+                    for i, header in enumerate(pv_headers):
+                        hdr_cells[i].text = header
+                        hdr_cells[i].paragraphs[0].runs[0].font.bold = True
+                        hdr_cells[i].paragraphs[0].runs[0].font.size = Pt(9)
+    
+                    for row_data in all_rows:
+                        if not isinstance(row_data, dict):
+                            continue
+                        row_cells = pv_table.add_row().cells
+    
+                        values = [
+                            str(row_data.get('year', '')),
+                            str(row_data.get('age', '')),
+                            f"${row_data.get('loss', 0):,.2f}",
+                            f"{(row_data.get('survivalProb') or 1):.4f}",
+                            f"${row_data.get('futurePart', 0):,.2f}",
+                            f"${row_data.get('survivalWeightedFuture', row_data.get('futurePart', 0)):,.2f}",
+                            f"${row_data.get('pvFuture', 0):,.2f}"
+                        ]
+    
+                        for i, value in enumerate(values):
+                            row_cells[i].text = value
+                            if row_cells[i].paragraphs and len(row_cells[i].paragraphs) > 0 and row_cells[i].paragraphs[0].runs and len(row_cells[i].paragraphs[0].runs) > 0:
+                                row_cells[i].paragraphs[0].runs[0].font.size = Pt(8)
+    
+                    doc.add_paragraph()
+                except Exception as e:
+                    print(f"Error adding PV/survival table: {e}")
+            elif not tinari_mode and all_rows and not include_discounting:
+                doc.add_heading('TABLE 9: Present Value and Survival Probability Analysis', level=2)
+                doc.add_paragraph('Present value discounting is OFF, so this table is omitted.').italic = True
+
+            # TABLE 11: Annual Loss Components Comparison
+            if not tinari_mode and all_rows:
+                try:
+                    doc.add_heading('TABLE 11: Annual Loss Components Comparison', level=2)
+                    doc.add_paragraph('Compares but-for total compensation to actual total compensation to show annual loss').italic = True
+    
+                    add_formula_note("Annual Loss = But-For Total Compensation - Actual Total Compensation; Loss % = Annual Loss / But-For Total Compensation.")
+    
+                    loss_table = doc.add_table(rows=1, cols=6)
+                    loss_table.style = 'Light Grid Accent 1'
+    
+                    loss_headers = ['Year', 'Age', 'But-For Total', 'Actual Total', 'Annual Loss', 'Loss %']
+                    hdr_cells = loss_table.rows[0].cells
+                    for i, header in enumerate(loss_headers):
+                        hdr_cells[i].text = header
+                        hdr_cells[i].paragraphs[0].runs[0].font.bold = True
+                        hdr_cells[i].paragraphs[0].runs[0].font.size = Pt(9)
+    
+                    for row_data in all_rows:
+                        if not isinstance(row_data, dict):
+                            continue
+                        row_cells = loss_table.add_row().cells
+    
+                        bf_total = (row_data.get('bfAdj', 0) + row_data.get('bfFringe', 0) +
+                                   row_data.get('bfLegals', 0))
+                        act_total = (row_data.get('actE', 0) + row_data.get('actFringe', 0) +
+                                    row_data.get('actLegals', 0))
+                        loss = row_data.get('loss', 0)
+                        loss_pct = (loss / bf_total * 100) if bf_total > 0 else 0
+    
+                        values = [
+                            str(row_data.get('year', '')),
+                            str(row_data.get('age', '')),
+                            f"${bf_total:,.2f}",
+                            f"${act_total:,.2f}",
+                            f"${loss:,.2f}",
+                            f"{loss_pct:.1f}%"
+                        ]
+    
+                        for i, value in enumerate(values):
+                            row_cells[i].text = value
+                            if row_cells[i].paragraphs and len(row_cells[i].paragraphs) > 0 and row_cells[i].paragraphs[0].runs and len(row_cells[i].paragraphs[0].runs) > 0:
+                                row_cells[i].paragraphs[0].runs[0].font.size = Pt(8)
+    
+                    doc.add_paragraph()
+                except Exception as e:
+                    print(f"Error adding loss components table: {e}")
+            # (These are already in the code, just need to ensure they're in the right place)
+            # The existing supplementary tables code will be moved here in the final organization
+            
+            # ==================== APPENDIX G: METHODS & DATA SOURCES ====================
+            doc.add_page_break()
+            doc.add_heading('Appendix G: Methods & Data Sources', level=1)
+            
+            doc.add_heading('Life Tables', level=2)
+            if life_table:
+                lt_source = life_table.get('source', 'CDC United States Life Tables, 2023')
+                lt_population = life_table.get('population', 'combined').title()
+                doc.add_paragraph(f'Source: {lt_source}')
+                doc.add_paragraph(f'Population: {lt_population}')
+            else:
+                doc.add_paragraph('CDC United States Life Tables, 2023 (default)')
+            doc.add_paragraph()
+            
+            doc.add_heading('Wage and Growth Sources', level=2)
+            if meta.get('wageSourceNotes'):
+                doc.add_paragraph(meta['wageSourceNotes'])
+            else:
+                doc.add_paragraph('Wage and growth sources not specified.')
+            doc.add_paragraph()
+            
+            doc.add_heading('Fringe Benefits Sources', level=2)
+            if meta.get('benefitSourceNotes'):
+                doc.add_paragraph(meta['benefitSourceNotes'])
+            else:
+                doc.add_paragraph('Fringe benefits sources not specified.')
+            doc.add_paragraph()
+            
+            doc.add_heading('Unemployment and Tax Sources', level=2)
+            doc.add_paragraph('Unemployment rates and tax rates are based on standard economic data sources and case-specific inputs.')
+            doc.add_paragraph()
+            
+            if include_discounting:
+                doc.add_heading('Discount Rate Sources', level=2)
+                discount = assumptions.get('discount', {})
+                discount_rate = (discount.get('ndr') if discount.get('method') == 'ndr' else discount.get('rate', 0)) or 0
+                doc.add_paragraph(f'Discount rate: {discount_rate*100:.2f}%')
+                if discount.get('method') == 'ndr':
+                    doc.add_paragraph('Method: Net Discount Rate (wage growth minus interest rate)')
+                else:
+                    doc.add_paragraph('Method: Fixed discount rate')
+            doc.add_paragraph()
+            
+            # ==================== APPENDIX H: SUPPLEMENTAL VISUALS ====================
+            doc.add_page_break()
+            doc.add_heading('Appendix H: Supplemental Visuals', level=1)
+            doc.add_paragraph('Additional charts and visualizations for detailed analysis.').italic = True
+            doc.add_paragraph()
+            
+            # Chart: Damages Breakdown Pie Chart
             try:
                 pie_chart = create_damages_breakdown_pie(totals, "Total Economic Damages Breakdown")
                 if pie_chart:
@@ -2662,44 +3404,9 @@ def create_app(config_name='development'):
                     doc.add_paragraph()
             except Exception as e:
                 print(f"Error creating damages pie chart: {e}")
-
-            # Chart 2: Annual Loss Bar Chart
-            try:
-                if all_rows:
-                    loss_chart = create_annual_loss_chart(all_rows, "Annual Economic Loss by Year")
-                    if loss_chart:
-                        doc.add_heading('Annual Economic Losses', level=2)
-                        doc.add_paragraph('This chart shows the economic loss for each year. Red bars indicate losses (but-for scenario exceeds actual earnings).')
-                        doc.add_picture(loss_chart, width=Inches(7))
-                        doc.add_paragraph()
-            except Exception as e:
-                print(f"Error creating annual loss chart: {e}")
-
-            # Chart 3: But-For vs Actual Earnings Comparison
-            try:
-                if all_rows:
-                    earnings_chart = create_earnings_comparison_chart(all_rows, "But-For vs Actual Earnings Comparison")
-                    if earnings_chart:
-                        doc.add_heading('Earnings Trajectory Comparison', level=2)
-                        doc.add_paragraph('Green line shows projected but-for earnings. Red line shows actual/post-injury earnings. Shaded area represents the economic loss.')
-                        doc.add_picture(earnings_chart, width=Inches(7))
-                        doc.add_paragraph()
-            except Exception as e:
-                print(f"Error creating earnings comparison chart: {e}")
-
-            # Chart 4: Cumulative Damages
-            try:
-                if all_rows:
-                    cumulative_chart = create_cumulative_damages_chart(all_rows, "Cumulative Economic Damages Over Time")
-                    if cumulative_chart:
-                        doc.add_heading('Cumulative Damages Over Time', level=2)
-                        doc.add_paragraph('This area chart shows how damages accumulate over time. Pink area represents past damages; blue area represents future damages (present value).')
-                        doc.add_picture(cumulative_chart, width=Inches(7))
-                        doc.add_paragraph()
-            except Exception as e:
-                print(f"Error creating cumulative damages chart: {e}")
-
-            # Chart 5: Sensitivity Heatmap (visual only)
+            
+            # Chart: Sensitivity Heatmap
+            sensitivity = data.get('sensitivityAnalysis', {})
             try:
                 if include_discounting and sensitivity and sensitivity.get('results'):
                     sens_heatmap = create_sensitivity_heatmap(sensitivity)
@@ -2710,8 +3417,8 @@ def create_app(config_name='development'):
                         doc.add_paragraph()
             except Exception as e:
                 print(f"Error creating sensitivity heatmap: {e}")
-
-            # Chart 6: UPS Fringe Breakdown (if applicable)
+            
+            # Chart: UPS Fringe Breakdown
             try:
                 if all_rows and use_ups_fringe:
                     ups_chart = create_ups_fringe_breakdown_chart(all_rows, "UPS Fringe Benefits: Health & Welfare vs Pension")
@@ -2722,37 +3429,40 @@ def create_app(config_name='development'):
                         doc.add_paragraph()
             except Exception as e:
                 print(f"Error creating UPS fringe breakdown chart: {e}")
-
-            # Jury-friendly summary charts (bottom of report, one simple graphic each)
+            
+            # Plain-English Jury Visuals
             try:
-                doc.add_heading('Plain-English Jury Visuals', level=1)
+                doc.add_heading('Plain-English Jury Visuals', level=2)
                 doc.add_paragraph('Simple one-frame charts: what was lost, how long it lasts, the growth/inflation factor, and total loss.').italic = True
     
                 jury_items = create_jury_items_chart(totals, "What Was Lost")
                 if jury_items:
-                    doc.add_heading('What Was Lost', level=2)
+                    doc.add_heading('What Was Lost', level=3)
                     doc.add_picture(jury_items, width=Inches(6))
                     doc.add_paragraph()
     
                 jury_years = create_jury_years_chart(schedule, "How Long The Loss Lasts")
                 if jury_years:
-                    doc.add_heading('How Long The Loss Lasts', level=2)
+                    doc.add_heading('How Long The Loss Lasts', level=3)
                     doc.add_picture(jury_years, width=Inches(5))
                     doc.add_paragraph()
     
                 jury_growth = create_jury_growth_chart(assumptions, "Growth / Inflation Factor Used")
                 if jury_growth:
-                    doc.add_heading('Growth / Inflation Factor Used', level=2)
+                    doc.add_heading('Growth / Inflation Factor Used', level=3)
                     doc.add_picture(jury_growth, width=Inches(6))
                     doc.add_paragraph()
     
-                jury_total = create_jury_total_chart(totals, "Total Economic Loss (Present Value)")
+                jury_total = create_jury_total_chart(totals, "Total Economic Loss")
                 if jury_total:
-                    doc.add_heading('Total Economic Loss (PV)', level=2)
+                    total_label = "Present Value" if include_discounting else "Nominal, undiscounted"
+                    doc.add_heading(f'Total Economic Loss ({total_label})', level=3)
                     doc.add_picture(jury_total, width=Inches(5))
                     doc.add_paragraph()
             except Exception as e:
                 print(f"Error creating jury breakdown charts: {e}")
+            
+            doc.add_paragraph()
     
             # Save to BytesIO
             file_stream = io.BytesIO()
